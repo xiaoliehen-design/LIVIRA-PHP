@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: livira-php
-    runtime: docker
-    region: singapore
-    plan: free
-    healthCheckPath: /healthz
-    autoDeployTrigger: commit
