@@ -1,0 +1,30 @@
+{
+  "name": "livira/livira-php",
+  "description": "LIVIRA - Layanan Inventori, Verifikasi, dan Integrasi berbasis PHP dan Supabase",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": ">=8.2",
+    "ext-json": "*",
+    "ext-filter": "*"
+  },
+  "suggest": {
+    "ext-mbstring": "Pemrosesan Unicode yang lebih lengkap",
+    "ext-zip": "Import dan ekspor XLSX tanpa command-line zip/unzip"
+  },
+  "autoload": {
+    "psr-4": {
+      "Livira\\": "src/"
+    },
+    "files": [
+      "src/Support/helpers.php"
+    ]
+  },
+  "scripts": {
+    "lint": "find src public resources/views tests -name '*.php' -print0 | xargs -0 -n1 php -l",
+    "test": "php tests/run.php"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

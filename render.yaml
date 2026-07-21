@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: livira-php
+    runtime: docker
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: LIVIRA
+      - key: APP_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "false"
+      - key: IDLE_TIMEOUT_SECONDS
+        value: "1800"
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: livira-documents
