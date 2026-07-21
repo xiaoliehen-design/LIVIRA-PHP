@@ -16,8 +16,9 @@ final class Router
 
     public function dispatch(Request $request): Response
     {
+        $requestMethod=$request->method==='HEAD'?'GET':$request->method;
         foreach($this->routes as [$method,$pattern,$handler,$middleware]) {
-            if ($method!==$request->method) continue;
+            if ($method!==$requestMethod) continue;
             [$regex,$keys]=$this->compile($pattern);
             if(!preg_match($regex,$request->path,$matches)) continue;
             array_shift($matches);

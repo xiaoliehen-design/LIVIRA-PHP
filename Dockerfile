@@ -8,8 +8,6 @@ RUN apt-get update \
     && docker-php-ext-install mbstring zip \
     && docker-php-ext-enable opcache \
     && a2enmod rewrite headers expires \
-    && sed -ri 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/*.conf \
-    && sed -ri 's!<Directory /var/www/>!<Directory /var/www/html/public/>!g' /etc/apache2/apache2.conf \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
@@ -29,8 +27,29 @@ RUN printf '%s\n' \
     'memory_limit=256M' \
     > /usr/local/etc/php/conf.d/livira.ini
 
-RUN sed -ri 's/^Listen 80$/Listen 10000/' /etc/apache2/ports.conf \
-    && sed -ri 's/<VirtualHost \*:80>/<VirtualHost *:10000>/' /etc/apache2/sites-available/000-default.conf
+# Render routes every request through Apache. This virtual host explicitly
+# enables front-controller routing so /login, /inventory, /healthz, etc.
+# are handled by public/index.php instead of returning Apache 404 responses.
+RUN printf '%s\n' \
+    '<VirtualHost *:10000>' \
+    '    ServerName localhost' \
+    '    DocumentRoot /var/www/html/public' \
+    '    DirectoryIndex index.php' \
+    '' \
+    '    <Directory /var/www/html/public>' \
+    '        Options FollowSymLinks' \
+    '        AllowOverride All' \
+    '        Require all granted' \
+    '        FallbackResource /index.php' \
+    '    </Directory>' \
+    '' \
+    '    ErrorLog ${APACHE_LOG_DIR}/error.log' \
+    '    CustomLog ${APACHE_LOG_DIR}/access.log combined' \
+    '</VirtualHost>' \
+    > /etc/apache2/sites-available/000-default.conf \
+    && printf '%s\n' 'ServerName localhost' > /etc/apache2/conf-available/livira-servername.conf \
+    && a2enconf livira-servername \
+    && sed -ri 's/^Listen 80$/Listen 10000/' /etc/apache2/ports.conf
 
 EXPOSE 10000
 CMD ["apache2-foreground"]

@@ -20,7 +20,8 @@ Pilihan paling mudah:
 
 1. Render Dashboard → **New** → **Blueprint**.
 2. Pilih repository LIVIRA PHP.
-3. Render membaca `render.yaml` dan membuat service `livira-php`.
+3. Render membaca `render.yaml` dan membuat service `livira-php` pada instance **Free** di region Singapore.
+4. Pada halaman estimasi biaya, pastikan total tertulis **$0/month**. Jika tertulis $7/month, batalkan deployment dan pastikan `render.yaml` memuat `plan: free`.
 
 Pilihan manual:
 
@@ -29,6 +30,7 @@ Pilihan manual:
 3. Runtime: **Docker**.
 4. Health Check Path: `/healthz`.
 5. Dockerfile Path: `./Dockerfile`.
+6. Pada **Instance Type**, pilih **Free**.
 
 ## 3. Environment production
 
@@ -71,3 +73,16 @@ Gunakan service baru, misalnya `livira-php-staging`, tanpa menghapus service lam
 3. arahkan custom domain ke service PHP;
 4. pertahankan service lama sementara sebagai rollback;
 5. jangan menjalankan reset SQL saat cutover.
+
+## 6. Troubleshooting route 404 setelah service Live
+
+Jika log menunjukkan root `/` mengembalikan redirect `303`, tetapi `/login` mengembalikan `404`, berarti Apache belum meneruskan route aplikasi ke front controller PHP.
+
+Paket v1.0.2 memperbaikinya melalui VirtualHost pada `Dockerfile` dengan:
+
+- `DocumentRoot /var/www/html/public`;
+- `AllowOverride All`;
+- `FallbackResource /index.php`;
+- dukungan request `HEAD` sebagai route `GET`.
+
+Setelah mengunggah paket v1.0.2 ke GitHub, buka service Render lalu pilih **Manual Deploy → Clear build cache & deploy** agar image lama tidak digunakan kembali.

@@ -22,3 +22,10 @@ Tanggal validasi paket: 21 Juli 2026.
 ## Batas validasi
 
 Validasi lokal tidak menggunakan credential Supabase produksi. Karena itu, sebelum mengganti layanan produksi, jalankan checklist pada `docs/VALIDASI_STAGING.md` dengan project Supabase staging atau salinan database. Dockerfile telah diperiksa secara statis, tetapi image Docker tidak dibangun di lingkungan validasi karena Docker CLI tidak tersedia.
+
+## Validasi tambahan v1.0.2
+
+- Apache front-controller test: `GET /healthz` = 200.
+- Apache front-controller test: `GET /login` = 200.
+- Apache front-controller test: `HEAD /` = 303 menuju login.
+- Apache static file test: `HEAD /assets/app.css` = 200.

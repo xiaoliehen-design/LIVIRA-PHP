@@ -83,10 +83,11 @@ SUPABASE_STORAGE_BUCKET=livira-documents
 ## Deploy ke Render dari GitHub
 
 1. Upload isi folder ini ke repository GitHub baru.
-2. Di Render pilih **New → Blueprint** dan hubungkan repository; `render.yaml` akan membuat Web Service Docker.
-3. Isi environment yang bertanda `sync: false`.
-4. Pastikan `PUBLIC_BASE_URL` memakai URL Render/custom domain final.
-5. Deploy dan periksa `/healthz`.
+2. Di Render pilih **New → Blueprint** dan hubungkan repository; `render.yaml` akan membuat Web Service Docker **Free** di region Singapore.
+3. Sebelum menekan deploy, pastikan estimasi biaya menunjukkan **$0/month**.
+4. Isi environment yang bertanda `sync: false`.
+5. Pastikan `PUBLIC_BASE_URL` memakai URL Render/custom domain final.
+6. Deploy dan periksa `/healthz`.
 
 Alternatifnya, buat **Web Service → Docker** secara manual dengan repository yang sama. Docker menjalankan Apache + PHP pada port `10000`.
 
@@ -133,3 +134,7 @@ Validasi mencakup:
 ## Catatan pengujian produksi
 
 Paket telah diuji secara lokal dengan PHP dan demo store. Koneksi live ke Supabase produksi tidak dapat diuji tanpa credential milik Anda. Lakukan deploy staging terlebih dahulu dan jalankan checklist pada [docs/VALIDASI_STAGING.md](docs/VALIDASI_STAGING.md) sebelum memindahkan domain produksi.
+
+### Catatan routing Render
+
+Paket v1.0.2 menggunakan Apache VirtualHost dengan front controller eksplisit. Semua URL aplikasi non-file diarahkan ke `public/index.php`, sehingga route seperti `/login`, `/inventory`, dan `/healthz` berfungsi di Render Docker.
