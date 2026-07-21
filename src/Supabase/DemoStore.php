@@ -110,12 +110,86 @@ final class DemoStore
     public function timeline(string $id):array{return array_values(array_filter($this->data['events'],fn($e)=>($e['inventory_id']??'')===$id));}
     public function processTimeline(string $id):array{return array_values(array_filter($this->data['events'],fn($e)=>($e['disposition_id']??'')===$id));}
     public function listEvents(int $limit=50000):array{return array_slice($this->data['events'],-$limit);}
-    public function listDispositions(array $f=[]):array{$rows=$this->data['dispositions'];$rows=array_values(array_filter($rows,function($p)use($f){if(!empty($f['type'])&&$p['disposition_type']!==$f['type'])return false;if(empty($f['include_inactive_inventory'])&&isset($p['inventory_is_active'])&&!$p['inventory_is_active'])return false;if(!empty($f['status'])&&$p['status_code']!==$f['status'])return false;return true;}));$offset=(int)($f['offset']??0);$limit=(int)($f['limit']??0);return$limit?array_slice($rows,$offset,$limit):array_slice($rows,$offset);}
+    public function listDispositions(array $f=[]):array
+    {
+        $rows=$this->data['dispositions'];
+        $allowed=array_values(array_filter(array_map(static fn($v)=>strtoupper(trim((string)$v)),(array)($f['allowed_types']??[]))));
+        $query=mb_strtolower(trim((string)($f['query']??'')));
+        $include=(array)($f['include_status_codes']??[]);$exclude=(array)($f['exclude_status_codes']??[]);
+        $rows=array_values(array_filter($rows,function($p)use($f,$allowed,$query,$include,$exclude){
+            if(!empty($f['type'])&&($p['disposition_type']??'')!==$f['type'])return false;
+            if(!empty($f['inventory_id'])&&($p['inventory_id']??'')!==$f['inventory_id'])return false;
+            if(!empty($f['facility_id'])&&($p['inventory_facility_id']??'')!==$f['facility_id'])return false;
+            if($allowed&&!in_array((string)($p['inventory_item_type']??$p['inventory_type']??''),$allowed,true))return false;
+            $status=(string)($f['status']??'');
+            if($status==='active'&&empty($p['is_active']))return false;
+            if($status==='completed'&&!empty($p['is_active']))return false;
+            if($status!==''&&!in_array($status,['active','completed'],true)&&($p['status_code']??'')!==$status)return false;
+            if($include&&!in_array((string)($p['status_code']??''),$include,true))return false;
+            if($exclude&&in_array((string)($p['status_code']??''),$exclude,true))return false;
+            if(!empty($f['only_inactive_inventory'])&&!empty($p['inventory_is_active']))return false;
+            if(empty($f['include_inactive_inventory'])&&empty($f['only_inactive_inventory'])&&empty($p['inventory_is_active']))return false;
+            if($query!==''&&!str_contains(mb_strtolower((string)($p['inventory_search_text']??'')),$query))return false;
+            return true;
+        }));
+        $sort=(string)($f['sort']??'newest');
+        usort($rows,function($a,$b)use($sort){
+            $av=$a['updated_at']??'';$bv=$b['updated_at']??'';
+            if($sort==='oldest')return strcmp((string)$av,(string)$bv);
+            if($sort==='determination_newest')return strcmp((string)($b['inventory_determination_date']??''),(string)($a['inventory_determination_date']??''));
+            if($sort==='determination_oldest')return strcmp((string)($a['inventory_determination_date']??''),(string)($b['inventory_determination_date']??''));
+            if($sort==='value_desc'||$sort==='value_asc'){
+                $field=(($a['disposition_type']??'')==='lelang')?'htl_value':'inventory_goods_value';$cmp=((float)($a[$field]??0))<=>((float)($b[$field]??0));return$sort==='value_desc'?-$cmp:$cmp;
+            }
+            return strcmp((string)$bv,(string)$av);
+        });
+        $offset=max(0,(int)($f['offset']??0));$limit=(int)($f['limit']??0);return$limit>0?array_slice($rows,$offset,$limit):array_slice($rows,$offset);
+    }
     public function countDispositions(array $f=[]):int{unset($f['limit'],$f['offset']);return count($this->listDispositions($f));}
-    public function processDashboard(string $type,int $year,array $allowed):array{$rows=$this->listDispositions(['type'=>$type,'include_inactive_inventory'=>true]);return['year'=>$year,'total'=>count($rows),'active'=>count(array_filter($rows,fn($r)=>!empty($r['is_active']))),'closed'=>count(array_filter($rows,fn($r)=>empty($r['is_active']))),'rows'=>$rows];}
+    public function processDashboard(string $type,int $year,array $allowed):array{$rows=$this->listDispositions(['type'=>$type,'include_inactive_inventory'=>true,'allowed_types'=>$allowed]);return['year'=>$year,'total'=>count($rows),'active'=>count(array_filter($rows,fn($r)=>!empty($r['is_active']))),'closed'=>count(array_filter($rows,fn($r)=>empty($r['is_active']))),'rows'=>$rows];}
     public function getDisposition(string $id):array{return$this->find('dispositions',$id);}
-    public function createDisposition(string $inventoryId,string $type,string $actor,string $notes=''):array{$item=$this->getInventory($inventoryId);$row=['id'=>$this->id('proc'),'inventory_id'=>$inventoryId,'disposition_type'=>$type,'status_code'=>$type==='lelang'?'kep_lelang':($type==='musnah'?'kep_musnah':'ba_serah_terima'),'status_label'=>ucfirst($type).' dimulai','round'=>1,'is_active'=>true,'inventory_reference_no'=>$item['reference_no'],'inventory_type'=>$item['item_type'],'inventory_description'=>$item['description'],'inventory_goods_value'=>$item['goods_value'],'inventory_facility_id'=>$item['facility_id'],'inventory_facility_name'=>$item['facility_name'],'inventory_is_active'=>$item['is_active'],'updated_at'=>gmdate('c'),'created_at'=>gmdate('c')];$this->data['dispositions'][]=$row;foreach($this->data['items'] as &$i)if($i['id']===$inventoryId)$i['current_disposition']=$type;unset($i);$this->save();return$row;}
-    public function addDispositionEvent(string $id,array $in):array{$p=$this->getDisposition($id);$code=(string)($in['code']??'');$status=$code;$label=ucwords(str_replace('_',' ',$code));if($code==='selesai_lelang'){$status=(string)($in['auction_outcome']??'tidak_laku');$label=$status==='laku'?'Laku':'Tidak laku';}$p['status_code']=$status;$p['status_label']=$label;$p['updated_at']=gmdate('c');if(in_array($code,['alokasi_hasil_lelang','ba_musnah','ba_serah_terima'],true))$p['is_active']=false;foreach(['sale_value','htl_value','destruction_cost','auction_outcome','transfer_type','allocation_target','execution_start_date','execution_end_date'] as $k)if(array_key_exists($k,$in))$p[$k]=$in[$k];$this->replace('dispositions',$p);$event=['id'=>$this->id('evt'),'inventory_id'=>$p['inventory_id'],'disposition_id'=>$id,'disposition_type'=>$p['disposition_type'],'code'=>$code,'label'=>$label,'document_no'=>$in['document_no']??'','document_date'=>$in['document_date']??date('Y-m-d'),'notes'=>$in['notes']??'','actor'=>$in['actor']??'Administrator','created_at'=>gmdate('c'),'document_id'=>$in['document_id']??null];$this->data['events'][]=$event;$this->save();return['process'=>$p,'event'=>$event];}
+    public function createDisposition(string $inventoryId,string $type,string $actor,string $notes=''):array
+    {
+        $item=$this->getInventory($inventoryId);
+        if(empty($item['is_active']))throw new ApiException('Barang sudah tidak aktif.',409);
+        if(($item['item_type']??'')==='TITIPAN')throw new ApiException('Barang titipan tidak dapat diproses.',422);
+        if(!in_array($type,Domain::DISPOSITIONS,true))throw new ApiException('Jenis proses tidak valid.',422);
+        $failed=($item['current_disposition']??'')==='lelang'&&($item['status_code']??'')==='tidak_laku'&&in_array($type,['musnah','hibah'],true);
+        if(!empty($item['current_disposition'])&&!$failed)throw new ApiException('Barang sudah memiliki proses aktif.',409);
+        if($failed){
+            foreach($this->data['dispositions'] as &$old)if(($old['inventory_id']??'')===$inventoryId&&($old['disposition_type']??'')==='lelang'&&!empty($old['is_active'])&&($old['status_code']??'')==='tidak_laku'){$old['status_code']=$type==='musnah'?'dialihkan_musnah':'dialihkan_hibah';$old['status_label']=$type==='musnah'?'Dialihkan ke pemusnahan':'Dialihkan ke hibah/PSP';$old['is_active']=false;$old['updated_at']=gmdate('c');}
+            unset($old);
+        }
+        $now=gmdate('c');$code='proses_'.$type;$label=match($type){'lelang'=>'Proses lelang dimulai','musnah'=>'Proses pemusnahan dimulai',default=>'Proses hibah/PSP dimulai'};
+        $row=['id'=>$this->id('proc'),'inventory_id'=>$inventoryId,'disposition_type'=>$type,'status_code'=>$code,'status_label'=>$label,'round'=>1,'is_active'=>true,'inventory'=>$item,'inventory_reference_no'=>$item['reference_no'],'inventory_type'=>$item['item_type'],'inventory_item_type'=>$item['item_type'],'inventory_description'=>$item['description'],'inventory_goods_value'=>$item['goods_value'],'inventory_facility_id'=>$item['facility_id'],'inventory_facility_name'=>$item['facility_name'],'inventory_determination_date'=>$item['determination_date'],'inventory_search_text'=>$item['search_text'],'inventory_is_active'=>$item['is_active'],'updated_at'=>$now,'created_at'=>$now];
+        $this->data['dispositions'][]=$row;
+        foreach($this->data['items'] as &$i)if($i['id']===$inventoryId){$i['current_disposition']=$type;$i['status_code']=$code;$i['status_label']=$label;$i['updated_at']=$now;$row['inventory']=$i;}unset($i);
+        $this->data['events'][]=['id'=>$this->id('evt'),'inventory_id'=>$inventoryId,'disposition_id'=>$row['id'],'disposition_type'=>$type,'code'=>$code,'label'=>$label,'document_no'=>'','document_date'=>null,'notes'=>trim($notes),'actor'=>trim($actor),'created_at'=>$now,'document_id'=>null];
+        $this->replace('dispositions',$row);return$row;
+    }
+    public function addDispositionEvent(string $id,array $in):array
+    {
+        $p=$this->getDisposition($id);if(empty($p['is_active']))throw new ApiException('Proses sudah tidak aktif.',409);
+        $code=trim((string)($in['code']??''));$actions=[];foreach(Domain::actionsFor((string)$p['disposition_type']) as $a)$actions[$a['Code']]=$a;if(!isset($actions[$code]))throw new ApiException('Tahapan proses tidak valid.',422);
+        $action=$actions[$code];$doc=trim((string)($in['document_no']??''));$docDate=trim((string)($in['document_date']??''));if($doc===''||$docDate===''||strtotime($docDate)===false)throw new ApiException('Nomor dan tanggal dokumen wajib diisi.',422);
+        if(empty($action['CreatesProcess'])){$allowed=array_filter(array_map('trim',explode(',',(string)($action['AllowedStatus']??''))));if($allowed&&!in_array((string)$p['status_code'],$allowed,true))throw new ApiException('Status proses tidak sesuai.',409);}
+        $type=(string)$p['disposition_type'];$status=$code;$label=(string)$action['Label'];$round=max(1,(int)($p['round']??1));$htl=(int)($in['htl_value']??0);$sale=(int)($in['sale_value']??0);$cost=(int)($in['destruction_cost']??0);$outcome=trim((string)($in['auction_outcome']??''));$transfer=trim((string)($in['transfer_type']??''));$allocation=trim((string)($in['allocation_target']??''));$start=trim((string)($in['execution_start_date']??''));$end=trim((string)($in['execution_end_date']??''));
+        if($type==='lelang'){
+            if($code==='kep_htl'&&$htl<=0)throw new ApiException('Nilai HTL harus lebih dari nol.',422);
+            if($code==='jadwal_lelang'){if($start===''||strtotime($start)===false)throw new ApiException('Tanggal lelang wajib diisi.',422);if($end==='')$end=$start;if(strtotime($end)<strtotime($start))throw new ApiException('Rentang tanggal tidak valid.',422);}
+            if($code==='selesai_lelang'){if(!in_array($outcome,['laku','tidak_laku'],true)||($outcome==='laku'&&$sale<=0))throw new ApiException('Hasil lelang tidak valid.',422);if($outcome==='tidak_laku')$sale=0;$status=$outcome;$label=$outcome==='laku'?'Laku':'Tidak laku';}
+            if($code==='lelang_penyesuaian'){if($round>=99)throw new ApiException('Batas putaran tercapai.',422);$round++;$label='Lelang penyesuaian putaran '.$round;}
+            if($code==='alokasi_hasil_lelang'&&$allocation==='')throw new ApiException('Tujuan alokasi wajib diisi.',422);
+        }elseif($type==='musnah'){if(!in_array($code,['kep_musnah','ba_musnah'],true)||$cost<=0)throw new ApiException('Biaya pemusnahan harus lebih dari nol.',422);}
+        elseif($type==='hibah'){if($code!=='ba_serah_terima'||!in_array($transfer,['hibah','psp'],true))throw new ApiException('Jenis serah terima tidak valid.',422);$label='BA Serah Terima '.strtoupper($transfer);}
+        $p['round']=$round;$p['status_code']=$status;$p['status_label']=$label;$p['updated_at']=gmdate('c');
+        if($code==='kep_htl')$p['htl_value']=$htl;if($code==='jadwal_lelang'){$p['execution_start_date']=$start;$p['execution_end_date']=$end;$p['schedule_document_no']=$doc;$p['schedule_document_date']=$docDate;}if($code==='selesai_lelang'){$p['sale_value']=$sale;$p['auction_outcome']=$outcome;}if($code==='alokasi_hasil_lelang')$p['allocation_target']=$allocation;if(in_array($code,['kep_musnah','ba_musnah'],true))$p['destruction_cost']=$cost;if($code==='ba_serah_terima')$p['transfer_type']=$transfer;
+        $closed=in_array($code,['alokasi_hasil_lelang','ba_musnah','ba_serah_terima'],true);if($closed)$p['is_active']=false;
+        foreach($this->data['items'] as &$item)if($item['id']===$p['inventory_id']){$item['status_code']=$status;$item['status_label']=$label;if($closed)$item['current_disposition']=null;$item['updated_at']=gmdate('c');$p['inventory']=$item;$p['inventory_is_active']=$item['is_active'];}unset($item);
+        $this->replace('dispositions',$p);
+        $event=['id'=>$this->id('evt'),'inventory_id'=>$p['inventory_id'],'disposition_id'=>$id,'disposition_type'=>$p['disposition_type'],'code'=>$code,'label'=>$label,'document_no'=>$doc,'document_date'=>date('Y-m-d',strtotime($docDate)),'notes'=>$in['notes']??'','actor'=>$in['actor']??'Administrator','created_at'=>gmdate('c'),'document_id'=>$in['document_id']??null];$this->data['events'][]=$event;$this->save();return['process'=>$p,'event'=>$event];
+    }
+
     public function createUserApplication(string $authId,string $name,string $email):array{$u=['id'=>$this->id('user'),'auth_user_id'=>$authId,'name'=>$name,'email'=>$email,'email_verified'=>false,'approval_status'=>'pending','role_id'=>null,'role_name'=>'','permissions'=>[],'created_at'=>gmdate('c')];$this->data['users'][]=$u;$this->save();return$u;}
     public function markUserEmailVerified(string $authId,string $email):void{foreach($this->data['users'] as &$u)if($u['auth_user_id']===$authId||$u['email']===$email){$u['email_verified']=true;$u['email_verified_at']=gmdate('c');}unset($u);$this->save();}
     public function userByAuthId(string $authId):array{foreach($this->data['users'] as $u)if($u['auth_user_id']===$authId)return$u;throw new ApiException('Pengguna belum terdaftar.',404);}

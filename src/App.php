@@ -248,19 +248,99 @@ final class App
 
     private function processPage(Request $r):Response
     {
-        [$type,$title,$singular,$viewPermission,$managePermission]=$this->processMeta((string)$r->route('type'));$session=$this->session($r);if(!Domain::can($session,$viewPermission))throw new ApiException('Akses proses tidak diberikan.',403);$history=$this->bool($r->query('history'));$page=max(1,(int)$r->query('page',1));$size=$this->pageSize($r->query('page_size',20));$filter=['type'=>$type,'facility_id'=>(string)$r->query('tpp'),'status'=>(string)$r->query('status'),'query'=>(string)$r->query('q'),'sort'=>(string)$r->query('sort','newest'),'allowed_types'=>Domain::allowedTypes($session),'limit'=>$size,'offset'=>($page-1)*$size,'include_inactive_inventory'=>$history];if($history)$filter['only_inactive_inventory']=true;
-        $total=$this->store->countDispositions($filter);$processes=$this->store->listDispositions($filter);$eligible=$this->store->listInventory(['allowed_types'=>Domain::allowedTypes($session),'limit'=>50000]);$dashboard=$this->store->processDashboard($type,(int)date('Y'),Domain::allowedTypes($session));$groups=$this->auctionScheduleGroups($this->store->listDispositions(['type'=>'lelang','include_inactive_inventory'=>true,'limit'=>50000]));
-        $data=$this->baseData($r)+['Title'=>$title,'Subtitle'=>'Kelola tahapan dan dokumen '.$title,'Active'=>$type,'ProcessType'=>$type,'ProcessTitle'=>$title,'ProcessSingular'=>$singular,'History'=>$history,'Processes'=>$processes,'CandidateProcesses'=>$processes,'EligibleItems'=>$eligible,'ProcessActions'=>Domain::actionsFor($type),'CanManage'=>Domain::can($session,$managePermission),'Facilities'=>$this->store->facilities(),'Query'=>(string)$r->query('q'),'FacilityID'=>(string)$r->query('tpp'),'Status'=>(string)$r->query('status'),'Sort'=>(string)$r->query('sort','newest'),'Pagination'=>$this->pagination($r,$page,$size,$total),'ProcessDashboard'=>$dashboard,'AuctionDashboard'=>$type==='lelang'?$dashboard:[],'DestructionDashboard'=>$type==='musnah'?$dashboard:[],'GrantDashboard'=>$type==='hibah'?$dashboard:[],'AuctionScheduleGroups'=>$groups];return Response::html($this->view->render('process',$data));
+        [$type,$title,$singular,$viewPermission,$managePermission]=$this->processMeta((string)$r->route('type'));
+        $session=$this->session($r);
+        if(!Domain::can($session,$viewPermission))throw new ApiException('Akses proses tidak diberikan.',403);
+        $history=$this->bool($r->query('history'));
+        $page=max(1,(int)$r->query('page',1));$size=$this->pageSize($r->query('page_size',20));
+        $allowed=Domain::allowedTypes($session);
+        $filter=['type'=>$type,'facility_id'=>(string)$r->query('tpp'),'status'=>$history?'':(string)$r->query('status'),'query'=>(string)$r->query('q'),'sort'=>(string)$r->query('sort','newest'),'allowed_types'=>$allowed,'limit'=>$size,'offset'=>($page-1)*$size];
+        if($type==='lelang'){
+            $filter['include_inactive_inventory']=$history;
+            if($history)$filter['include_status_codes']=['laku','alokasi_hasil_lelang','dialihkan_musnah','dialihkan_hibah'];
+            else $filter['exclude_status_codes']=['laku','alokasi_hasil_lelang','dialihkan_musnah','dialihkan_hibah'];
+        }elseif($type==='musnah'){
+            $filter['include_inactive_inventory']=true;
+            if($history)$filter['include_status_codes']=['ba_musnah'];
+            else $filter['exclude_status_codes']=['ba_musnah'];
+        }else{
+            $filter['only_inactive_inventory']=$history;
+        }
+        $total=$this->store->countDispositions($filter);
+        $processes=$this->store->listDispositions($filter);
+
+        $allInventory=$this->store->listInventory(['allowed_types'=>$allowed,'limit'=>50000,'sort'=>'newest']);
+        $eligible=array_values(array_filter($allInventory,fn(array $item):bool=>$this->processSourceEligible($item,$type)));
+        $candidateFilter=['type'=>$type,'include_inactive_inventory'=>$type==='musnah','limit'=>5000,'allowed_types'=>$allowed];
+        $candidateProcesses=$this->store->listDispositions($candidateFilter);
+        $dashboard=$this->store->processDashboard($type,(int)date('Y'),$allowed);
+        $groups=$type==='lelang'?$this->auctionScheduleGroups($this->store->listDispositions(['type'=>'lelang','include_inactive_inventory'=>true,'limit'=>5000,'allowed_types'=>$allowed])):[];
+        $pageTitle=$history?'Riwayat '.$title:$title;
+        $subtitle=$history?match($type){'lelang'=>'Barang laku dan barang tidak laku yang dialihkan ke penyelesaian lain disimpan sebagai jejak proses.','musnah'=>'Pemusnahan yang telah selesai disimpan sebagai jejak penyelesaian.',default=>'Barang yang telah keluar dari inventory aktif disimpan sebagai jejak penyelesaian.'}:'Setiap proses dimulai dengan memilih barang aktif dari inventory.';
+        $data=$this->baseData($r)+['Title'=>$pageTitle,'Subtitle'=>$subtitle,'Active'=>$type,'ProcessType'=>$type,'ProcessTitle'=>$title,'ProcessSingular'=>$singular,'History'=>$history,'Processes'=>$processes,'CandidateProcesses'=>$candidateProcesses,'EligibleItems'=>$eligible,'ProcessActions'=>Domain::actionsFor($type),'CanManage'=>Domain::can($session,$managePermission),'Facilities'=>$this->store->facilities(),'Query'=>(string)$r->query('q'),'FacilityID'=>(string)$r->query('tpp'),'Status'=>(string)$r->query('status'),'Sort'=>(string)$r->query('sort','newest'),'Pagination'=>$this->pagination($r,$page,$size,$total),'ProcessDashboard'=>$dashboard,'AuctionDashboard'=>$type==='lelang'?$dashboard:[],'DestructionDashboard'=>$type==='musnah'?$dashboard:[],'GrantDashboard'=>$type==='hibah'?$dashboard:[],'AuctionScheduleGroups'=>$groups];
+        return Response::html($this->view->render('process',$data));
     }
     private function processAction(Request $r):Response
     {
-        [$type,,,$view,$manage]=$this->processMeta((string)$r->route('type'));if(!Domain::can($this->session($r),$manage))throw new ApiException('Anda tidak memiliki akses kelola proses.',403);$code=(string)$r->input('event_code');$base=$this->formMap($r,['document_no','document_date','notes','execution_start_date','execution_end_date','transfer_type','allocation_target']);$base['actor']=$this->actor($r);$base['document_id']=$this->optionalDocument($r);$base['code']=$code;
-        $ids=$this->values($r->input('process_ids'));$inventoryIds=$this->values($r->input('inventory_ids'));
-        if($code==='kep_lelang'||$code==='kep_musnah'||$code==='ba_serah_terima')foreach($inventoryIds as $inventoryId){$p=$this->store->createDisposition($inventoryId,$type,$this->actor($r),(string)$r->input('notes'));if($code!==($type==='lelang'?'kep_lelang':($type==='musnah'?'kep_musnah':'ba_serah_terima')))$this->store->addDispositionEvent((string)$p['id'],$base);}
-        elseif($code==='kep_htl'&&$r->input('htl_results_json'))foreach($this->jsonArray($r->input('htl_results_json')) as $row)$this->store->addDispositionEvent((string)$row['process_id'],array_merge($base,['htl_value'=>$this->money($row['htl_value']??0)]));
-        elseif($code==='selesai_lelang'&&$r->input('auction_results_json'))foreach($this->jsonArray($r->input('auction_results_json')) as $row)$this->store->addDispositionEvent((string)$row['process_id'],array_merge($base,['auction_outcome'=>$row['outcome']??'','sale_value'=>$this->money($row['sale_value']??0)]));
-        else foreach($ids as $id)$this->store->addDispositionEvent($id,array_merge($base,['htl_value'=>$this->money($r->input('htl_value')),'sale_value'=>$this->money($r->input('sale_value')),'destruction_cost'=>$this->money($r->input('destruction_cost')),'auction_outcome'=>(string)$r->input('auction_outcome')]));
-        return$this->back($r,'Tahapan proses berhasil disimpan.','/proses/'.$type);
+        [$type,,,$view,$manage]=$this->processMeta((string)$r->route('type'));
+        $session=$this->session($r);
+        if(!Domain::can($session,$manage))throw new ApiException('Anda tidak memiliki akses kelola proses.',403);
+        $code=trim((string)$r->input('event_code'));
+        $action=$this->processActionDefinition($type,$code);
+        $base=$this->formMap($r,['document_no','document_date','notes','execution_start_date','execution_end_date','transfer_type','allocation_target','recipient_code','recipient_name']);
+        $base['actor']=$this->actor($r);$base['document_id']=$this->optionalDocument($r);$base['code']=$code;
+        $base['destruction_cost']=$this->money($r->input('destruction_cost'));
+        $base['htl_value']=$this->money($r->input('htl_value'));
+        $base['sale_value']=$this->money($r->input('sale_value'));
+        $base['auction_outcome']=trim((string)$r->input('auction_outcome'));
+        if(trim((string)$base['document_no'])===''||trim((string)$base['document_date'])===''||strtotime((string)$base['document_date'])===false)throw new ApiException('Nomor dan tanggal dokumen wajib diisi.',422);
+        if($code==='jadwal_lelang'&&trim((string)$base['execution_start_date'])!==''&&trim((string)$base['execution_end_date'])==='')$base['execution_end_date']=$base['execution_start_date'];
+
+        if(!empty($action['CreatesProcess'])){
+            $inventoryIds=$this->values($r->input('inventory_ids'));
+            if(!$inventoryIds)throw new ApiException('Pilih minimal satu barang yang akan diproses.',422);
+            $prepared=[];
+            foreach($inventoryIds as $inventoryId){
+                $item=$this->accessibleInventory($r,$inventoryId);
+                if(!$this->processSourceEligible($item,$type))throw new ApiException('Salah satu barang tidak lagi memenuhi syarat untuk proses ini.',409);
+                $this->validateProcessInput(['disposition_type'=>$type,'status_code'=>'proses_'.$type,'round'=>1,'is_active'=>true],$base,$action,true);
+                $prepared[]=$inventoryId;
+            }
+            foreach($prepared as $inventoryId){
+                $process=$this->store->createDisposition($inventoryId,$type,$this->actor($r),(string)$r->input('notes'));
+                $this->store->addDispositionEvent((string)$process['id'],$base);
+            }
+            return$this->back($r,count($prepared).' barang berhasil dimasukkan ke proses '.$type.'.','/proses/'.$type);
+        }
+
+        if($code==='kep_htl'){
+            $drafts=$this->jsonArray($r->input('htl_results_json'));$selected=$this->values($r->input('process_ids'));
+            if(!$drafts||count($drafts)>500)throw new ApiException('Pilih barang dan lengkapi nilai HTL masing-masing.',422);
+            $prepared=[];$seen=[];
+            foreach($drafts as $row){$id=trim((string)($row['process_id']??''));if($id===''||isset($seen[$id]))throw new ApiException('Daftar barang HTL tidak valid atau ganda.',422);$seen[$id]=true;$input=$base;$input['htl_value']=$this->money($row['htl_value']??0);$process=$this->accessibleProcess($session,$id,$type);$this->validateProcessInput($process,$input,$action);$prepared[]=[$id,$input];}
+            sort($selected);$draftIds=array_keys($seen);sort($draftIds);if($selected&&$selected!==$draftIds)throw new ApiException('Daftar barang HTL tidak sesuai dengan barang yang dipilih.',422);
+            foreach($prepared as [$id,$input])$this->store->addDispositionEvent($id,$input);
+            return$this->back($r,'KEP Harga Terendah Lelang berhasil disimpan untuk '.count($prepared).' barang.','/proses/lelang');
+        }
+
+        if($code==='selesai_lelang'){
+            $scheduleNo=trim((string)$r->input('auction_schedule_no'));$drafts=$this->jsonArray($r->input('auction_results_json'));
+            if($scheduleNo===''||!$drafts||count($drafts)>500)throw new ApiException('Pilih satu ND penjadwalan dan lengkapi hasil setiap barang.',422);
+            $all=$this->store->listDispositions(['type'=>'lelang','include_inactive_inventory'=>true,'limit'=>5000,'allowed_types'=>Domain::allowedTypes($session)]);$expected=[];
+            foreach($all as $process)if(!empty($process['is_active'])&&($process['status_code']??'')==='jadwal_lelang'&&trim((string)($process['schedule_document_no']??''))===$scheduleNo&&$this->sessionCanAccessProcess($session,$process))$expected[(string)$process['id']]=$process;
+            if(!$expected||count($expected)!==count($drafts))throw new ApiException('Seluruh barang dalam ND penjadwalan harus ditetapkan hasilnya sekaligus.',422);
+            $prepared=[];$seen=[];
+            foreach($drafts as $row){$id=trim((string)($row['process_id']??''));if(!isset($expected[$id])||isset($seen[$id]))throw new ApiException('Daftar barang tidak sesuai dengan ND penjadwalan yang dipilih.',422);$seen[$id]=true;$input=$base;$input['auction_outcome']=trim((string)($row['outcome']??''));$input['sale_value']=$this->money($row['sale_value']??0);if($input['auction_outcome']==='tidak_laku')$input['sale_value']=0;$this->validateProcessInput($expected[$id],$input,$action);$prepared[]=[$id,$input];}
+            foreach($prepared as [$id,$input])$this->store->addDispositionEvent($id,$input);
+            return$this->back($r,'Hasil lelang berdasarkan '.$scheduleNo.' berhasil disimpan untuk '.count($prepared).' barang.','/proses/lelang');
+        }
+
+        $ids=$this->values($r->input('process_ids'));
+        if(!$ids)throw new ApiException('Pilih minimal satu proses yang akan diperbarui.',422);
+        $prepared=[];
+        foreach($ids as $id){$process=$this->accessibleProcess($session,$id,$type);$this->validateProcessInput($process,$base,$action);$prepared[]=$id;}
+        foreach($prepared as $id)$this->store->addDispositionEvent($id,$base);
+        return$this->back($r,'Tahapan proses berhasil disimpan untuk '.count($prepared).' barang.','/proses/'.$type);
     }
 
     private function reconciliation(Request $r): Response
@@ -577,7 +657,68 @@ final class App
         unset($p);
         return['research'=>array_values($research),'physical'=>$physical];
     }
-    private function auctionScheduleGroups(array $processes):array{$groups=[];foreach($processes as $p){$no=trim((string)($p['schedule_document_no']??''));if($no===''||($p['status_code']??'')!=='jadwal_lelang')continue;$groups[$no]['ScheduleNo']=$no;$groups[$no]['ScheduleDate']=$p['schedule_document_date']??null;$groups[$no]['Items'][]=$p;}return array_values($groups);}
+    private function auctionScheduleGroups(array $processes):array
+    {
+        $groups=[];
+        foreach($processes as $p){
+            $no=trim((string)($p['schedule_document_no']??''));
+            if($no===''||($p['status_code']??'')!=='jadwal_lelang'||empty($p['is_active']))continue;
+            if(!isset($groups[$no]))$groups[$no]=['DocumentNo'=>$no,'DocumentDate'=>$p['schedule_document_date']??null,'Processes'=>[]];
+            $groups[$no]['Processes'][]=$p;
+        }
+        uasort($groups,static fn($a,$b)=>strcmp((string)($b['DocumentDate']??''),(string)($a['DocumentDate']??'')));
+        return array_values($groups);
+    }
+    private function processActionDefinition(string $type,string $code):array
+    {
+        foreach(Domain::actionsFor($type) as $action)if(($action['Code']??'')===$code)return$action;
+        throw new ApiException('Action proses tidak valid.',422);
+    }
+    private function processSourceEligible(array $item,string $target):bool
+    {
+        if(strtoupper((string)($item['item_type']??''))==='TITIPAN'||empty($item['is_active']))return false;
+        if(($item['current_disposition']??'')==='lelang'&&($item['status_code']??'')==='tidak_laku')return in_array($target,['musnah','hibah'],true);
+        if(!empty($item['current_disposition']))return false;
+        return !in_array((string)($item['status_code']??''),['alokasi_hasil_lelang','ba_musnah','ba_serah_terima'],true);
+    }
+    private function sessionCanAccessProcess(array $session,array $process):bool
+    {
+        if(($session['Role']??'')==='admin')return true;
+        $type=strtoupper((string)($process['inventory_item_type']??$process['inventory_type']??($process['inventory']['item_type']??'')));
+        return $type!==''&&in_array($type,Domain::allowedTypes($session),true);
+    }
+    private function accessibleProcess(array $session,string $id,string $type):array
+    {
+        $process=$this->store->getDisposition($id);
+        if(($process['disposition_type']??'')!==$type||!$this->sessionCanAccessProcess($session,$process))throw new ApiException('Proses tidak ditemukan atau tidak dapat diakses.',403);
+        return$process;
+    }
+    private function validateProcessInput(array $process,array $input,array $action,bool $creating=false):void
+    {
+        if(empty($process['is_active'])||trim((string)($input['document_no']??''))===''||trim((string)($input['document_date']??''))===''||strtotime((string)$input['document_date'])===false)throw new ApiException('Nomor dan tanggal dokumen wajib diisi serta proses harus masih aktif.',422);
+        if(!$creating&&empty($action['CreatesProcess'])){
+            $allowed=array_values(array_filter(array_map('trim',explode(',',(string)($action['AllowedStatus']??'')))));
+            if($allowed&&!in_array((string)($process['status_code']??''),$allowed,true))throw new ApiException('Salah satu proses tidak berada pada status yang sesuai untuk action ini.',409);
+        }
+        $type=(string)($process['disposition_type']??'');$code=(string)($input['code']??'');
+        if($type==='lelang'){
+            if($code==='kep_htl'&&(int)($input['htl_value']??0)<=0)throw new ApiException('Nilai HTL setiap barang harus lebih dari nol.',422);
+            if($code==='jadwal_lelang'){
+                $start=trim((string)($input['execution_start_date']??''));$end=trim((string)($input['execution_end_date']??''));
+                if($start===''||strtotime($start)===false||($end!==''&&(strtotime($end)===false||strtotime($end)<strtotime($start))))throw new ApiException('Tanggal pelaksanaan lelang tidak valid.',422);
+            }
+            if($code==='selesai_lelang'){
+                $outcome=(string)($input['auction_outcome']??'');$sale=(int)($input['sale_value']??0);
+                if(!in_array($outcome,['laku','tidak_laku'],true)||($outcome==='laku'&&$sale<=0))throw new ApiException('Tetapkan hasil dan harga jual untuk setiap barang yang laku.',422);
+            }
+            if($code==='lelang_penyesuaian'&&(int)($process['round']??1)>=99)throw new ApiException('Batas putaran lelang penyesuaian telah tercapai.',422);
+            if($code==='alokasi_hasil_lelang'&&trim((string)($input['allocation_target']??''))==='')throw new ApiException('Tujuan alokasi hasil lelang wajib diisi.',422);
+        }elseif($type==='musnah'){
+            if(!in_array($code,['kep_musnah','ba_musnah'],true)||(int)($input['destruction_cost']??0)<=0)throw new ApiException('Biaya pemusnahan harus lebih dari nol.',422);
+        }elseif($type==='hibah'){
+            if($code!=='ba_serah_terima'||!in_array((string)($input['transfer_type']??''),['hibah','psp'],true))throw new ApiException('Jenis serah terima harus Hibah atau PSP.',422);
+        }
+    }
     private function allowedInventoryActions(array $session):array{return array_values(array_filter(Domain::INVENTORY_ACTIONS,fn($a)=>Domain::can($session,Domain::actionPermission($a['Code']))));}
     private function inventoryManagementPermissions():array{$p=['inventory.create.btd','inventory.create.bdn','inventory.create.titipan'];foreach(Domain::INVENTORY_ACTIONS as $a)$p[]=Domain::actionPermission($a['Code']);return array_values(array_unique($p));}
     private function processMeta(string $type):array{return match($type){'lelang'=>['lelang','Lelang','lelang','auction.view','auction.manage'],'musnah'=>['musnah','Pemusnahan','pemusnahan','destruction.view','destruction.manage'],'hibah'=>['hibah','Hibah / PSP','hibah/PSP','grant.view','grant.manage'],default=>throw new ApiException('Jenis proses tidak valid.',404)};}

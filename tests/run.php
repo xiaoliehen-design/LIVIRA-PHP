@@ -12,6 +12,8 @@ use Livira\Security\Captcha;
 use Livira\Security\SessionManager;
 use Livira\Supabase\ApiException;
 use Livira\Supabase\DemoStore;
+use Livira\Supabase\Store;
+use Livira\Supabase\SupabaseClient;
 use Livira\Support\Xlsx;
 
 $passed = 0;
@@ -122,12 +124,37 @@ try {
     mkdir($appBase.'/storage', 0775, true);
     symlink($basePath.'/resources', $appBase.'/resources');
     $config = new Config('LIVIRA', 'development', 'http://localhost', str_repeat('x', 48), 'admin', 'admin-demo-only', '', '', '', 'livira-documents', true, 1800);
+    $queryStore = new Store($config, new SupabaseClient('http://127.0.0.1:9', 'test-key', 1));
+    $dispositionQuery = $queryStore->dispositionQuery(['type' => 'musnah', 'allowed_types' => ['BTD', 'BDN'], 'status' => 'active', 'sort' => 'determination_newest']);
+    $assert(isset($dispositionQuery['inventory_item_type']) && !isset($dispositionQuery['inventory_type']), 'Query proses memakai kolom view inventory_item_type yang tersedia di Supabase');
+    $assert(($dispositionQuery['is_active'] ?? '') === 'eq.true' && !isset($dispositionQuery['status_code']), 'Filter proses aktif memakai is_active, bukan status_code active');
+    $auctionQuery = $queryStore->dispositionQuery(['type' => 'lelang', 'sort' => 'value_desc']);
+    $assert(($auctionQuery['order'] ?? '') === 'htl_value.desc', 'Urutan nilai lelang memakai HTL pada disposition_details');
+
     $appSeed = new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents');
     $appCensusItem = $appSeed->createInventory([
         'type' => 'BTD', 'determination_no' => 'BTD-APP-CACAH-001', 'determination_date' => '2026-07-21',
         'description' => 'Uraian awal aplikasi', 'item_kind' => 'Barang Umum', 'quantity' => 4, 'unit' => 'KOLI',
         'goods_condition' => 'Baik', 'load_type' => 'FCL', 'container_no' => 'APPC1234567',
         'container_size' => '20', 'facility_id' => 'tpp-transporindo', 'actor' => 'Test Runner',
+    ]);
+    $auctionItem = $appSeed->createInventory([
+        'type' => 'BTD', 'determination_no' => 'BTD-LELANG-001', 'determination_date' => '2026-07-21',
+        'description' => 'Barang uji proses lelang', 'item_kind' => 'Barang Umum', 'quantity' => 1, 'unit' => 'UNIT',
+        'goods_condition' => 'Baik', 'goods_value' => 500000, 'load_type' => 'LCL', 'estimated_volume_m3' => 1,
+        'facility_id' => 'tpp-transporindo', 'actor' => 'Test Runner',
+    ]);
+    $destructionItem = $appSeed->createInventory([
+        'type' => 'BDN', 'determination_no' => 'BDN-MUSNAH-001', 'determination_date' => '2026-07-21',
+        'description' => 'Barang uji proses musnah', 'item_kind' => 'Barang Umum', 'quantity' => 2, 'unit' => 'UNIT',
+        'goods_condition' => 'Rusak berat', 'goods_value' => 200000, 'load_type' => 'LCL', 'estimated_volume_m3' => 1,
+        'facility_id' => 'tpp-transporindo', 'actor' => 'Test Runner',
+    ]);
+    $grantItem = $appSeed->createInventory([
+        'type' => 'BMMN', 'determination_no' => 'BMMN-HIBAH-001', 'determination_date' => '2026-07-21',
+        'description' => 'Barang uji proses hibah', 'item_kind' => 'Barang Umum', 'quantity' => 3, 'unit' => 'UNIT',
+        'goods_condition' => 'Baik', 'goods_value' => 300000, 'load_type' => 'LCL', 'estimated_volume_m3' => 1,
+        'facility_id' => 'tpp-transporindo', 'actor' => 'Test Runner',
     ]);
     $app = new App($appBase, $config);
     $health = $app->handle(new Request('GET', '/healthz'));
@@ -174,6 +201,50 @@ try {
         static fn(array $row): bool => ($row['physical_unit_id'] ?? '') === ($appCensusItem['physical_unit_id'] ?? '')
     ));
     $assert(count($appCensusRows) === 2 && in_array('Uraian tambahan dari form', array_column($appCensusRows, 'description'), true), 'Handler HTTP menyimpan uraian baru sesuai jumlah baris pencacahan');
+
+    foreach (['lelang', 'musnah', 'hibah'] as $processType) {
+        $pageResponse = $app->handle(new Request('GET', '/proses/'.$processType));
+        $assert($pageResponse->status === 200 && !str_contains($pageResponse->body, 'Kesalahan'), 'Halaman proses '.$processType.' dapat dirender tanpa query kolom Supabase yang salah');
+    }
+
+    $processPost = static function(string $type, array $body) use ($app, $adminSession): Response {
+        return $app->handle(new Request('POST', '/proses/'.$type.'/bulk-action', [], array_merge([
+            '_csrf' => $adminSession['CSRF'], 'document_date' => '2026-07-21', 'return_to' => '/proses/'.$type,
+        ], $body), [], ['accept' => 'text/html']));
+    };
+
+    $auctionStart = $processPost('lelang', ['event_code' => 'kep_lelang', 'document_no' => 'KEP-LELANG-001', 'inventory_ids' => [(string)$auctionItem['id']]]);
+    $assert($auctionStart->status === 303, 'Proses lelang dapat dimulai dari inventory');
+    $processCheck = new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents');
+    $auctionProcess = $processCheck->listDispositions(['type' => 'lelang', 'inventory_id' => (string)$auctionItem['id'], 'include_inactive_inventory' => true])[0] ?? [];
+    $assert(($auctionProcess['status_code'] ?? '') === 'kep_lelang', 'Penerbitan KEP Lelang diterapkan setelah placeholder proses dibuat');
+
+    $auctionId = (string)($auctionProcess['id'] ?? '');
+    $htlResponse = $processPost('lelang', ['event_code' => 'kep_htl', 'document_no' => 'KEP-HTL-001', 'process_ids' => [$auctionId], 'htl_results_json' => json_encode([['process_id' => $auctionId, 'htl_value' => '450.000']])]);
+    $assert($htlResponse->status === 303, 'Nilai HTL per barang dapat disimpan');
+    $scheduleResponse = $processPost('lelang', ['event_code' => 'jadwal_lelang', 'document_no' => 'ND-JADWAL-001', 'process_ids' => [$auctionId], 'execution_start_date' => '2026-07-25', 'execution_end_date' => '']);
+    $assert($scheduleResponse->status === 303, 'Penjadwalan lelang dapat disimpan');
+    $schedulePage = $app->handle(new Request('GET', '/proses/lelang'));
+    $assert(str_contains($schedulePage->body, 'ND-JADWAL-001'), 'Kelompok ND penjadwalan memakai struktur DocumentNo dan Processes yang sesuai view');
+    $completionResponse = $processPost('lelang', ['event_code' => 'selesai_lelang', 'document_no' => 'RISALAH-001', 'auction_schedule_no' => 'ND-JADWAL-001', 'auction_results_json' => json_encode([['process_id' => $auctionId, 'outcome' => 'laku', 'sale_value' => '600.000']])]);
+    $assert($completionResponse->status === 303, 'Hasil lelang satu ND dapat disimpan lengkap');
+    $allocationResponse = $processPost('lelang', ['event_code' => 'alokasi_hasil_lelang', 'document_no' => 'KEP-ALOKASI-001', 'process_ids' => [$auctionId], 'allocation_target' => 'Kas Negara']);
+    $assert($allocationResponse->status === 303, 'Alokasi hasil lelang dapat menyelesaikan proses');
+
+    $musnahStart = $processPost('musnah', ['event_code' => 'kep_musnah', 'document_no' => 'KEP-MUSNAH-001', 'inventory_ids' => [(string)$destructionItem['id']], 'destruction_cost' => '125.000']);
+    $assert($musnahStart->status === 303, 'KEP Musnah dapat membuat dan memperbarui proses');
+    $processCheck = new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents');
+    $musnahProcess = $processCheck->listDispositions(['type' => 'musnah', 'inventory_id' => (string)$destructionItem['id'], 'include_inactive_inventory' => true])[0] ?? [];
+    $assert(($musnahProcess['status_code'] ?? '') === 'kep_musnah' && (int)($musnahProcess['destruction_cost'] ?? 0) === 125000, 'Biaya KEP Musnah tersimpan pada proses');
+    $musnahId = (string)($musnahProcess['id'] ?? '');
+    $musnahFinish = $processPost('musnah', ['event_code' => 'ba_musnah', 'document_no' => 'BA-MUSNAH-001', 'process_ids' => [$musnahId], 'destruction_cost' => '150.000']);
+    $assert($musnahFinish->status === 303, 'BA Musnah dapat menyelesaikan proses');
+
+    $grantStart = $processPost('hibah', ['event_code' => 'ba_serah_terima', 'document_no' => 'BA-HIBAH-001', 'inventory_ids' => [(string)$grantItem['id']], 'transfer_type' => 'hibah']);
+    $assert($grantStart->status === 303, 'BA Serah Terima dapat membuat dan menyelesaikan proses Hibah/PSP');
+    $processCheck = new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents');
+    $grantProcess = $processCheck->listDispositions(['type' => 'hibah', 'inventory_id' => (string)$grantItem['id'], 'include_inactive_inventory' => true])[0] ?? [];
+    $assert(($grantProcess['status_code'] ?? '') === 'ba_serah_terima' && ($grantProcess['transfer_type'] ?? '') === 'hibah' && empty($grantProcess['is_active']), 'Status akhir Hibah/PSP dan jenis serah terima tersimpan');
 
     $logout = $app->handle(new Request('POST', '/logout', [], ['_csrf' => $adminSession['CSRF']], [], ['accept' => 'text/html']));
     $logoutCookie = (string)($logout->headers['Set-Cookie'] ?? '');

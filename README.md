@@ -1,5 +1,7 @@
 # LIVIRA PHP
 
+**Rilis saat ini: 1.0.5**
+
 **LIVIRA — Layanan Inventori, Verifikasi, dan Integrasi** dalam implementasi PHP 8.2+ dengan Supabase sebagai Auth, PostgreSQL/API, RPC, dan Storage.
 
 Paket ini adalah aplikasi **PHP-only**. Tidak ada source Go, `go.mod`, `go.sum`, binary Go, atau kebutuhan runtime Go.
@@ -12,7 +14,7 @@ Paket ini adalah aplikasi **PHP-only**. Tidak ada source Go, `go.mod`, `go.sum`,
 - Dashboard seluruh kantor, TPS, seluruh TPP, per TPP, BTD/BDN/BMMN/barang titipan, kapasitas, YOR/SOR, dan performa.
 - Inventory BTD, BDN, BMMN, barang titipan, FCL/LCL, multi-kontainer dan multi-rincian barang.
 - Action pemindahan, pemberitahuan, pencacahan multi-uraian per kontainer, request/penelitian PFPD, penetapan/peruntukan BMMN, pengeluaran, dan bongkar/muat tanpa mengubah status barang.
-- Proses lelang, pemusnahan, hibah/PSP, pengalihan hasil lelang, dan history.
+- Proses lelang, pemusnahan, hibah/PSP, pengalihan hasil lelang, history, validasi transisi status, serta hasil lelang per ND penjadwalan.
 - Rekonsiliasi fisik serta perubahan data barang dengan nilai sebelum/sesudah dan audit.
 - Upload Excel massal, template Excel, upload dokumen private Supabase Storage, pencarian, pagination, notifikasi, dan ekspor CSV/XLS/XLSX.
 - Parameter sistem dan TPP yang dapat dikelola administrator.
@@ -66,6 +68,7 @@ Buka `http://127.0.0.1:8080`.
 ## Menggunakan Supabase LIVIRA yang sekarang
 
 Gunakan project Supabase yang sama. Tidak perlu memindahkan data, Auth user, Storage, RPC, atau menjalankan reset database.
+Rilis 1.0.5 sudah menggunakan kolom view `disposition_details.inventory_item_type` yang tersedia pada setup database LIVIRA; tidak memerlukan migration tambahan.
 
 ```env
 APP_ENV=production

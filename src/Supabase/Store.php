@@ -235,18 +235,122 @@ final class Store
 
     public function dispositionQuery(array $f):array
     {
-        $q=['select'=>'*'];if(!empty($f['inventory_id']))$q['inventory_id']='eq.'.$f['inventory_id'];if(!empty($f['type']))$q['disposition_type']='eq.'.$f['type'];if(!empty($f['facility_id']))$q['inventory_facility_id']='eq.'.$f['facility_id'];$allowed=$f['allowed_types']??[];if($allowed)$q['inventory_type']='in.('.implode(',',$allowed).')';if(!empty($f['status']))$q['status_code']='eq.'.$f['status'];if(!empty($f['include_status_codes']))$q['status_code']='in.('.implode(',',$f['include_status_codes']).')';if(!empty($f['exclude_status_codes']))$q['status_code']='not.in.('.implode(',',$f['exclude_status_codes']).')';if(!empty($f['only_inactive_inventory']))$q['inventory_is_active']='eq.false';elseif(empty($f['include_inactive_inventory']))$q['inventory_is_active']='eq.true';if(trim((string)($f['query']??''))!=='')$q['inventory_search_text']='ilike.*'.trim((string)$f['query']).'*';$q['order']=match($f['sort']??'newest'){'oldest'=>'updated_at.asc','value_desc'=>'inventory_goods_value.desc','value_asc'=>'inventory_goods_value.asc',default=>'updated_at.desc'};if((int)($f['limit']??0)>0)$q['limit']=(string)(int)$f['limit'];if((int)($f['offset']??0)>0)$q['offset']=(string)(int)$f['offset'];return $q;
+        $q=['select'=>'*'];
+        if(!empty($f['inventory_id']))$q['inventory_id']='eq.'.trim((string)$f['inventory_id']);
+        if(!empty($f['type']))$q['disposition_type']='eq.'.trim((string)$f['type']);
+        if(!empty($f['facility_id']))$q['inventory_facility_id']='eq.'.trim((string)$f['facility_id']);
+
+        $allowed=array_values(array_filter(array_map(static fn($v)=>strtoupper(trim((string)$v)),(array)($f['allowed_types']??[])),static fn($v)=>in_array($v,Domain::TYPES,true)));
+        if($allowed)$q['inventory_item_type']='in.('.implode(',',$allowed).')';
+
+        $status=trim((string)($f['status']??''));
+        if($status==='active')$q['is_active']='eq.true';
+        elseif($status==='completed')$q['is_active']='eq.false';
+        elseif($status!=='')$q['status_code']='eq.'.$status;
+
+        $include=array_values(array_filter(array_map('trim',(array)($f['include_status_codes']??[]))));
+        $exclude=array_values(array_filter(array_map('trim',(array)($f['exclude_status_codes']??[]))));
+        if($include)$q['status_code']='in.('.implode(',',$include).')';
+        elseif($exclude)$q['status_code']='not.in.('.implode(',',$exclude).')';
+
+        if(!empty($f['only_inactive_inventory']))$q['inventory_is_active']='eq.false';
+        elseif(empty($f['include_inactive_inventory']))$q['inventory_is_active']='eq.true';
+
+        $raw=trim((string)($f['query']??''));
+        if($raw!==''){
+            $term=preg_replace('/[^\pL\pN\s\-_\/\.\'\(\)]/u','',$raw);
+            if($term===null||trim($term)==='')return['__invalid'=>true];
+            $q['inventory_search_text']='ilike.*'.trim($term).'*';
+        }
+
+        $sort=(string)($f['sort']??'newest');
+        $type=(string)($f['type']??'');
+        $q['order']=match($sort){
+            'oldest'=>'updated_at.asc',
+            'determination_newest'=>'inventory_determination_date.desc',
+            'determination_oldest'=>'inventory_determination_date.asc',
+            'value_desc'=>$type==='lelang'?'htl_value.desc':'inventory_goods_value.desc',
+            'value_asc'=>$type==='lelang'?'htl_value.asc':'inventory_goods_value.asc',
+            default=>'updated_at.desc',
+        };
+        if((int)($f['limit']??0)>0)$q['limit']=(string)(int)$f['limit'];
+        if((int)($f['offset']??0)>0)$q['offset']=(string)(int)$f['offset'];
+        return$q;
     }
-    public function listDispositions(array $f=[]):array{return $this->rows($this->db->rest('GET','disposition_details',$this->dispositionQuery($f)));}
-    public function countDispositions(array $f=[]):int{$q=$this->dispositionQuery($f);unset($q['order'],$q['limit'],$q['offset']);return $this->db->restCount('disposition_details',$q);}
+    public function listDispositions(array $f=[]):array{$q=$this->dispositionQuery($f);if(isset($q['__invalid']))return[];return$this->rows($this->db->rest('GET','disposition_details',$q));}
+    public function countDispositions(array $f=[]):int{$q=$this->dispositionQuery($f);if(isset($q['__invalid']))return 0;unset($q['order'],$q['limit'],$q['offset']);return$this->db->restCount('disposition_details',$q);}
     public function processDashboard(string $type,int $year,array $allowed):array{return (array)$this->db->rest('POST','rpc/livira_process_dashboard',[],['p_type'=>$type,'p_year'=>$year,'p_types'=>$allowed]);}
     public function getDisposition(string $id):array{return $this->first($this->db->rest('GET','disposition_details',['select'=>'*','id'=>'eq.'.$id,'limit'=>'1']));}
-    public function createDisposition(string $inventoryId,string $type,string $actor,string $notes=''):array{$item=$this->getInventory($inventoryId);return (array)$this->db->rest('POST','rpc/livira_create_disposition',[],['p_inventory_id'=>$inventoryId,'p_disposition_type'=>$type,'p_actor'=>$actor,'p_notes'=>$notes,'p_expected_updated_at'=>$item['updated_at']??null]);}
+    public function createDisposition(string $inventoryId,string $type,string $actor,string $notes=''):array
+    {
+        $item=$this->getInventory($inventoryId);
+        if(empty($item['is_active']))throw new ApiException('Barang sudah tidak aktif.',409);
+        if(($item['item_type']??'')==='TITIPAN')throw new ApiException('Barang titipan tidak dapat masuk proses penyelesaian ini.',422);
+        if(!in_array($type,Domain::DISPOSITIONS,true))throw new ApiException('Jenis proses tidak valid.',422);
+        $failedAuction=($item['current_disposition']??'')==='lelang'&&($item['status_code']??'')==='tidak_laku'&&in_array($type,['musnah','hibah'],true);
+        if(!empty($item['current_disposition'])&&!$failedAuction)throw new ApiException('Barang sudah berada dalam proses penyelesaian aktif.',409);
+        return (array)$this->db->rest('POST','rpc/livira_create_disposition',[],['p_inventory_id'=>$inventoryId,'p_disposition_type'=>$type,'p_actor'=>trim($actor),'p_notes'=>trim($notes),'p_expected_updated_at'=>$item['updated_at']??null]);
+    }
     public function addDispositionEvent(string $id,array $in):array
     {
-        $p=$this->getDisposition($id);$code=trim((string)($in['code']??''));$actions=[];foreach(Domain::actionsFor((string)($p['disposition_type']??'')) as $a)$actions[$a['Code']]=$a;if(!isset($actions[$code]))throw new ApiException('Tahapan proses tidak valid.',422);$label=$actions[$code]['Label'];$status=$code;$round=(int)($p['round']??1);if($code==='lelang_penyesuaian'){$round++;$label='Lelang penyesuaian putaran '.$round;}if($code==='selesai_lelang'){$status=(string)($in['auction_outcome']??'');$label=$status==='laku'?'Laku':'Tidak laku';}if($code==='ba_serah_terima')$label='BA Serah Terima '.strtoupper((string)($in['transfer_type']??''));$processPatch=['round'=>$round,'status_code'=>$status,'status_label'=>$label];
-        if($code==='selesai_lelang')$processPatch+=['sale_value'=>(int)($in['sale_value']??0),'auction_outcome'=>$status];if($code==='kep_htl')$processPatch['htl_value']=(int)($in['htl_value']??0);if($code==='jadwal_lelang')$processPatch+=['execution_start_date'=>$this->nullableDate($in['execution_start_date']??''),'execution_end_date'=>$this->nullableDate($in['execution_end_date']??''),'schedule_document_no'=>trim((string)($in['document_no']??'')),'schedule_document_date'=>$this->nullableDate($in['document_date']??'')];if($code==='alokasi_hasil_lelang')$processPatch['allocation_target']=trim((string)($in['allocation_target']??''));if(in_array($code,['kep_musnah','ba_musnah'],true))$processPatch['destruction_cost']=(int)($in['destruction_cost']??0);if($code==='ba_serah_terima')$processPatch['transfer_type']=trim((string)($in['transfer_type']??''));foreach(['recipient_code','recipient_name'] as $k)if(!empty($in[$k]))$processPatch[$k]=$in[$k];$itemPatch=['status_code'=>$status,'status_label'=>$label];if(in_array($code,['alokasi_hasil_lelang','ba_musnah','ba_serah_terima'],true)){$processPatch['is_active']=false;$itemPatch['current_disposition']=null;}
-        $event=['code'=>$code,'label'=>$label,'document_no'=>trim((string)($in['document_no']??'')),'document_date'=>$this->nullableDate($in['document_date']??''),'notes'=>trim((string)($in['notes']??'')),'actor'=>trim((string)($in['actor']??'')),'document_id'=>$this->nullString($in['document_id']??'')];return (array)$this->db->rest('POST','rpc/livira_apply_disposition_event',[],['p_disposition_id'=>$id,'p_expected_updated_at'=>$p['updated_at']??null,'p_process_patch'=>$processPatch,'p_item_patch'=>$itemPatch,'p_event'=>$event]);
+        $p=$this->getDisposition($id);
+        if(empty($p['is_active']))throw new ApiException('Proses sudah selesai atau tidak aktif.',409);
+        $code=trim((string)($in['code']??''));
+        $actions=[];foreach(Domain::actionsFor((string)($p['disposition_type']??'')) as $a)$actions[$a['Code']]=$a;
+        if(!isset($actions[$code]))throw new ApiException('Tahapan proses tidak valid.',422);
+        $action=$actions[$code];
+        $doc=trim((string)($in['document_no']??''));
+        $docDate=$this->nullableDate($in['document_date']??'');
+        if($doc===''||$docDate===null)throw new ApiException('Nomor dan tanggal dokumen wajib diisi.',422);
+        if(empty($action['CreatesProcess'])){
+            $allowed=array_values(array_filter(array_map('trim',explode(',',(string)($action['AllowedStatus']??'')))));
+            if($allowed&&!in_array((string)($p['status_code']??''),$allowed,true))throw new ApiException('Status proses tidak sesuai dengan tahapan yang dipilih.',409);
+        }
+
+        $type=(string)($p['disposition_type']??'');
+        $round=max(1,(int)($p['round']??1));
+        $status=$code;$label=(string)$action['Label'];
+        $start=$this->nullableDate($in['execution_start_date']??'');
+        $end=$this->nullableDate($in['execution_end_date']??'');
+        $htl=(int)($in['htl_value']??0);$sale=(int)($in['sale_value']??0);$cost=(int)($in['destruction_cost']??0);
+        $outcome=trim((string)($in['auction_outcome']??''));$transfer=trim((string)($in['transfer_type']??''));$allocation=trim((string)($in['allocation_target']??''));
+        if($type==='lelang'){
+            if($code==='kep_htl'&&$htl<=0)throw new ApiException('Nilai HTL harus lebih dari nol.',422);
+            if($code==='jadwal_lelang'){
+                if($start===null)throw new ApiException('Tanggal pelaksanaan lelang wajib diisi.',422);
+                if($end===null)$end=$start;
+                if($end<$start)throw new ApiException('Tanggal selesai lelang tidak boleh sebelum tanggal mulai.',422);
+            }
+            if($code==='selesai_lelang'){
+                if(!in_array($outcome,['laku','tidak_laku'],true))throw new ApiException('Hasil lelang harus laku atau tidak laku.',422);
+                if($outcome==='laku'&&$sale<=0)throw new ApiException('Harga jual wajib diisi untuk barang yang laku.',422);
+                if($outcome==='tidak_laku')$sale=0;
+                $status=$outcome;$label=$outcome==='laku'?'Laku':'Tidak laku';
+            }
+            if($code==='lelang_penyesuaian'){
+                if($round>=99)throw new ApiException('Batas putaran lelang penyesuaian telah tercapai.',422);
+                $round++;$label='Lelang penyesuaian putaran '.$round;
+            }
+            if($code==='alokasi_hasil_lelang'&&$allocation==='')throw new ApiException('Tujuan alokasi hasil lelang wajib diisi.',422);
+        }elseif($type==='musnah'){
+            if(!in_array($code,['kep_musnah','ba_musnah'],true)||$cost<=0)throw new ApiException('Biaya pemusnahan harus lebih dari nol.',422);
+        }elseif($type==='hibah'){
+            if($code!=='ba_serah_terima'||!in_array($transfer,['hibah','psp'],true))throw new ApiException('Jenis serah terima harus Hibah atau PSP.',422);
+            $label='BA Serah Terima '.strtoupper($transfer);
+        }
+
+        $processPatch=['round'=>$round,'status_code'=>$status,'status_label'=>$label];
+        if($code==='selesai_lelang')$processPatch+=['sale_value'=>$sale,'auction_outcome'=>$status];
+        if($code==='kep_htl')$processPatch['htl_value']=$htl;
+        if($code==='jadwal_lelang')$processPatch+=['execution_start_date'=>$start,'execution_end_date'=>$end,'schedule_document_no'=>$doc,'schedule_document_date'=>$docDate];
+        if($code==='alokasi_hasil_lelang')$processPatch['allocation_target']=$allocation;
+        if(in_array($code,['kep_musnah','ba_musnah'],true))$processPatch['destruction_cost']=$cost;
+        if($code==='ba_serah_terima')$processPatch['transfer_type']=$transfer;
+        foreach(['recipient_code','recipient_name'] as $k){$v=trim((string)($in[$k]??''));if($v!=='')$processPatch[$k]=$v;}
+        $itemPatch=['status_code'=>$status,'status_label'=>$label];
+        if(in_array($code,['alokasi_hasil_lelang','ba_musnah','ba_serah_terima'],true)){$processPatch['is_active']=false;$itemPatch['current_disposition']=null;}
+        $event=['code'=>$code,'label'=>$label,'document_no'=>$doc,'document_date'=>$docDate,'notes'=>trim((string)($in['notes']??'')),'actor'=>trim((string)($in['actor']??'')),'document_id'=>$this->nullString($in['document_id']??'')];
+        return (array)$this->db->rest('POST','rpc/livira_apply_disposition_event',[],['p_disposition_id'=>$id,'p_expected_updated_at'=>$p['updated_at']??null,'p_process_patch'=>$processPatch,'p_item_patch'=>$itemPatch,'p_event'=>$event]);
     }
 
     public function createUserApplication(string $authId,string $name,string $email):array{$existing=$this->rows($this->db->rest('GET','app_users',['select'=>'*','auth_user_id'=>'eq.'.$authId,'limit'=>'1']));if($existing)return $this->first($this->db->rest('PATCH','app_users',['id'=>'eq.'.$existing[0]['id'],'select'=>'*'],['name'=>trim($name),'email'=>strtolower(trim($email)),'updated_at'=>$this->now()]));return $this->first($this->db->rest('POST','app_users',['select'=>'*'],['auth_user_id'=>$authId,'name'=>trim($name),'email'=>strtolower(trim($email)),'approval_status'=>'pending']));}
