@@ -144,7 +144,13 @@ final class App
     private function resendSignup(Request $r):Response{$email=strtolower(trim((string)$r->input('email')));$this->auth->resendSignup($email);return Response::redirect('/signup/verify?email='.rawurlencode($email).'&success='.rawurlencode('OTP baru telah dikirim.'));}
     private function requestPasswordReset(Request $r):Response{$email=strtolower(trim((string)$r->input('email')));if(!filter_var($email,FILTER_VALIDATE_EMAIL))throw new ApiException('Email tidak valid.',422);$this->auth->requestPasswordReset($email);return Response::redirect('/forgot-password/verify?email='.rawurlencode($email).'&success='.rawurlencode('OTP reset password telah dikirim.'));}
     private function resetPassword(Request $r):Response{$password=(string)$r->input('password');if(strlen($password)<8||$password!==(string)$r->input('password_confirmation'))throw new ApiException('Password minimal 8 karakter dan konfirmasi harus sama.',422);$this->auth->resetPassword((string)$r->input('email'),(string)$r->input('token'),$password);return Response::redirect('/login?success='.rawurlencode('Password berhasil diubah. Silakan login.'));}
-    private function logout(Request $r):Response{return Response::redirect('/login')->withCookie($this->sessions->clearCookie());}
+    private function logout(Request $r):Response
+    {
+        $response=$r->acceptsJson()
+            ? Response::json(['ok'=>true,'message'=>'Sesi berhasil diakhiri.'])
+            : Response::redirect('/login?success='.rawurlencode('Anda berhasil logout.'));
+        return $response->withCookie($this->sessions->clearCookie());
+    }
 
     private function dashboard(Request $r):Response
     {
@@ -186,10 +192,49 @@ final class App
     }
     private function inventoryEvent(Request $r,bool $bulk):Response
     {
-        $code=(string)$r->input('event_code');$permission=Domain::actionPermission($code);if($permission===''||!Domain::can($this->session($r),$permission))throw new ApiException('Anda tidak memiliki hak akses action ini.',403);$ids=$bulk?$this->values($r->input('inventory_ids')):[(string)$r->route('id')];if(!$ids&&$code!=='penelitian_pfpd')throw new ApiException('Pilih minimal satu barang.',422);
+        $code=(string)$r->input('event_code');
+        $permission=Domain::actionPermission($code);
+        if($permission===''||!Domain::can($this->session($r),$permission))throw new ApiException('Anda tidak memiliki hak akses action ini.',403);
+        $ids=$bulk?$this->values($r->input('inventory_ids')):[(string)$r->route('id')];
+        $structuredActions=['penelitian_pfpd','pencacahan','pindah_bongkar_kontainer'];
+        if(!$ids&&!in_array($code,$structuredActions,true))throw new ApiException('Pilih minimal satu barang.',422);
         $base=$this->formMap($r,['document_no','document_date','notes','target_facility_id','allocation_type','exit_type']);$base['actor']=$this->actor($r);$base['document_id']=$this->optionalDocument($r);$base['code']=$code;
         if($code==='pencacahan'){
-            foreach($this->jsonArray($r->input('census_results_json')) as $target){$this->store->applyCensus((string)($target['target_id']??''),(array)($target['lines']??[]),$base);}return$this->back($r,'Hasil pencacahan berhasil disimpan.','/inventory');
+            $drafts=$this->jsonArray($r->input('census_results_json'));
+            if(!$drafts||count($drafts)>100)throw new ApiException('Pilih minimal satu kontainer FCL atau satu barang LCL, lalu lengkapi hasil pencacahannya.',422);
+            $seenTargets=[];$seenUnits=[];$prepared=[];
+            foreach($drafts as $draft){
+                $targetId=trim((string)($draft['target_id']??''));
+                $loadType=strtoupper(trim((string)($draft['load_type']??'')));
+                $rawLines=(array)($draft['lines']??[]);
+                if($targetId===''||!in_array($loadType,['FCL','LCL'],true)||!$rawLines||count($rawLines)>100)throw new ApiException('Data target atau uraian pencacahan tidak valid.',422);
+                if(isset($seenTargets[$targetId]))throw new ApiException('Target pencacahan yang sama terpilih lebih dari satu kali.',422);
+                $seenTargets[$targetId]=true;
+                $item=$this->accessibleInventory($r,$targetId);
+                if(strtoupper((string)($item['load_type']??''))!==$loadType)throw new ApiException('Target pencacahan tidak ditemukan atau jenis muatannya telah berubah.',409);
+                $unitKey=trim((string)($item['physical_unit_id']??''))?:$targetId;
+                if($loadType==='FCL'&&isset($seenUnits[$unitKey]))throw new ApiException('Satu kontainer FCL hanya boleh dipilih satu kali dalam satu penyimpanan.',422);
+                $seenUnits[$unitKey]=true;
+                $lines=[];
+                foreach($rawLines as $raw){
+                    $line=[
+                        'inventory_id'=>trim((string)($raw['inventory_id']??'')),
+                        'description'=>trim((string)($raw['description']??'')),
+                        'item_kind'=>trim((string)($raw['item_kind']??'')),
+                        'goods_value'=>$this->money($raw['goods_value']??0),
+                        'quantity'=>$this->number($raw['quantity']??0),
+                        'quantity_detail'=>trim((string)($raw['quantity_detail']??'')),
+                        'unit'=>trim((string)($raw['unit']??'')),
+                        'goods_condition'=>trim((string)($raw['goods_condition']??'')),
+                    ];
+                    if($line['description']===''||$line['item_kind']===''||$line['quantity']<=0||$line['unit']===''||$line['goods_condition']==='')throw new ApiException('Lengkapi uraian, jenis, jumlah, satuan, dan kondisi untuk setiap barang hasil pencacahan.',422);
+                    $lines[]=$line;
+                }
+                $prepared[]=['target_id'=>$targetId,'lines'=>$lines];
+            }
+            $totalRows=0;
+            foreach($prepared as $target)$totalRows+=count($this->store->applyCensus($target['target_id'],$target['lines'],$base));
+            return$this->back($r,'Hasil pencacahan '.count($prepared).' target berhasil disimpan pada '.$totalRows.' uraian barang.','/inventory');
         }
         if($code==='pindah_bongkar_kontainer'){
             $payload=$this->jsonArray($r->input('container_relocation_json'));foreach($payload as $target)$this->store->relocateLoad((string)($target['target_id']??$target['inventory_id']??($ids[0]??'')),(array)($target['allocations']??[$target]),$base);return$this->back($r,'Bongkar/muat kontainer berhasil disimpan.','/inventory');
@@ -380,11 +425,31 @@ final class App
 
     private function protected(Request $r,callable $next):Response
     {
-        $session=$this->sessions->read();if(!$session)return$r->acceptsJson()?Response::json(['error'=>'Sesi tidak valid atau telah berakhir.'],401):Response::redirect('/login?error='.rawurlencode('Sesi berakhir. Silakan login kembali.'));
+        $session=$this->sessions->read();
+        if(!$session){
+            $response=$r->acceptsJson()
+                ? Response::json(['error'=>'Sesi tidak valid atau telah berakhir.'],401)
+                : Response::redirect('/login?error='.rawurlencode('Sesi berakhir. Silakan login kembali.'));
+            return $response->withCookie($this->sessions->clearCookie());
+        }
         if(($session['Role']??'')!=='admin'&&str_starts_with((string)($session['Subject']??''),'user:')){try{$user=$this->store->userByAuthId(substr((string)$session['Subject'],5));if(($user['approval_status']??'')!=='approved')return Response::redirect('/login?error='.rawurlencode('Akses akun tidak lagi aktif.'))->withCookie($this->sessions->clearCookie());$session['DisplayName']=$user['name']??$session['DisplayName'];$session['RoleID']=$user['role_id']??'';$session['RoleName']=$user['role_name']??'';$session['Permissions']=Domain::normalizePermissions((array)($user['permissions']??[]));}catch(\Throwable){return Response::redirect('/login?error='.rawurlencode('Akun aplikasi tidak ditemukan.'))->withCookie($this->sessions->clearCookie());}}
-        $session=$this->sessions->touch($session);$r->attributes['session']=$session;$response=$next($r);return$response->withCookie($this->sessions->cookie($session));
+        $session=$this->sessions->touch($session);
+        $r->attributes['session']=$session;
+        $response=$next($r);
+        // Respons yang secara eksplisit menetapkan cookie (terutama logout) tidak boleh
+        // ditimpa lagi oleh cookie sesi yang baru disentuh middleware ini.
+        if(!array_key_exists('Set-Cookie',$response->headers)){
+            $response->withCookie($this->sessions->cookie($session));
+        }
+        return $response;
     }
-    private function csrf(Request $r,callable $next):Response{if(!$this->sessions->csrfValid($this->session($r),(string)$r->input('_csrf')))return$this->errorResponse($r,'Token keamanan form tidak valid. Muat ulang halaman lalu coba kembali.',419);return$next($r);}
+    private function csrf(Request $r,callable $next):Response
+    {
+        $token=(string)$r->input('_csrf');
+        if($token==='')$token=$r->header('x-csrf-token');
+        if(!$this->sessions->csrfValid($this->session($r),$token))return$this->errorResponse($r,'Token keamanan form tidak valid. Muat ulang halaman lalu coba kembali.',419);
+        return$next($r);
+    }
     private function permission(Request $r,callable $next,string $permission):Response{if(!Domain::can($this->session($r),$permission))return$this->errorResponse($r,'Anda tidak memiliki hak akses untuk fitur ini.',403);return$next($r);}
     private function anyPermission(Request $r,callable $next,array $permissions):Response{foreach($permissions as $p)if(Domain::can($this->session($r),$p))return$next($r);return$this->errorResponse($r,'Anda tidak memiliki hak akses untuk fitur ini.',403);}
     private function adminOnly(Request $r,callable $next):Response{if(($this->session($r)['Role']??'')!=='admin')return$this->errorResponse($r,'Fitur ini khusus administrator.',403);return$next($r);}
@@ -474,7 +539,44 @@ final class App
         return['DateFromInput'=>date('Y-m-d',$start),'DateToInput'=>date('Y-m-d',$end),'PeriodLabel'=>date('d/m/Y',$start).'–'.date('d/m/Y',$end),'TotalCompleted'=>count($details),'Metrics'=>array_values($stats),'Details'=>$details,'ExportURL'=>'/pelaporan/performa.xlsx?'.$query];
     }
     private function performance(array $events,string $from='',string $to=''):array{$start=$from!==''?strtotime($from.' 00:00:00'):strtotime('first day of january');$end=$to!==''?strtotime($to.' 23:59:59'):time();$counts=['auction_completed'=>0,'destruction_completed'=>0,'grant_completed'=>0,'census_completed'=>0,'pfpd_completed'=>0];foreach($events as $e){$t=strtotime((string)($e['created_at']??''));if($t<$start||$t>$end)continue;$code=$e['code']??'';if(in_array($code,['alokasi_hasil_lelang','laku'],true))$counts['auction_completed']++;if($code==='ba_musnah')$counts['destruction_completed']++;if($code==='ba_serah_terima')$counts['grant_completed']++;if($code==='pencacahan')$counts['census_completed']++;if($code==='penelitian_pfpd')$counts['pfpd_completed']++;}$counts['total_completed']=array_sum($counts);$counts['period_label']=date('d/m/Y',$start).'–'.date('d/m/Y',$end);$counts['from']=date('Y-m-d',$start);$counts['to']=date('Y-m-d',$end);return$counts;}
-    private function inventoryGroups(array $items):array{$research=[];$physical=[];foreach($items as $i){$request=trim((string)($i['research_request_no']??''));if($request!==''&&($i['status_code']??'')==='request_penelitian_pfpd'){$research[$request]['RequestNo']=$request;$research[$request]['RequestDate']=$i['research_request_date']??null;$research[$request]['Items'][]=$i;}$key=(string)($i['physical_unit_id']??$i['id']);$physical[$key]['TargetID']=$key;$physical[$key]['LoadType']=$i['load_type']??'';$physical[$key]['ContainerNo']=$i['container_no']??'';$physical[$key]['ContainerSize']=$i['container_size']??'';$physical[$key]['Items'][]=$i;}$physical=array_values($physical);foreach($physical as &$p)$p['SearchValue']=mb_strtolower(($p['ContainerNo']??'').' '.implode(' ',array_column($p['Items'],'description')));unset($p);return['research'=>array_values($research),'physical'=>$physical];}
+    private function inventoryGroups(array $items):array
+    {
+        $research=[];$physical=[];$completed=['laku','alokasi_hasil_lelang','ba_musnah','ba_serah_terima','pengeluaran_barang'];
+        foreach($items as $i){
+            $request=trim((string)($i['research_request_no']??''));
+            if($request!==''&&($i['status_code']??'')==='request_penelitian_pfpd'){$research[$request]['RequestNo']=$request;$research[$request]['RequestDate']=$i['research_request_date']??null;$research[$request]['Items'][]=$i;}
+            if(empty($i['is_active'])||trim((string)($i['current_disposition']??''))!==''||in_array((string)($i['status_code']??''),$completed,true))continue;
+            $loadType=strtoupper((string)($i['load_type']??''));
+            $key=$loadType==='FCL'?(trim((string)($i['physical_unit_id']??''))?:((string)($i['id']??''))):((string)($i['id']??''));
+            if(!isset($physical[$key])){
+                $physical[$key]=[
+                    'TargetID'=>(string)($i['id']??''),
+                    'TargetKey'=>$key,
+                    'PhysicalUnitID'=>trim((string)($i['physical_unit_id']??''))?:((string)($i['id']??'')),
+                    'LoadType'=>$loadType,
+                    'ContainerNo'=>$i['container_no']??'',
+                    'ContainerSize'=>$i['container_size']??'',
+                    'DeterminationNo'=>$i['determination_no']??'',
+                    'InventoryType'=>$i['item_type']??'',
+                    'StatusCode'=>$i['status_code']??'',
+                    'StatusLabel'=>$i['status_label']??'',
+                    'Items'=>[],
+                ];
+            }
+            if(!empty($i['occupancy_primary']))$physical[$key]['TargetID']=(string)($i['id']??'');
+            $physical[$key]['Items'][]=$i;
+        }
+        $physical=array_values($physical);
+        foreach($physical as &$p){
+            usort($p['Items'],static function(array $a,array $b):int{
+                $primary=(int)!empty($b['occupancy_primary'])<=>(int)!empty($a['occupancy_primary']);
+                return $primary!==0?$primary:strcmp((string)($a['created_at']??''),(string)($b['created_at']??''));
+            });
+            $p['SearchValue']=mb_strtolower(($p['ContainerNo']??'').' '.implode(' ',array_column($p['Items'],'description')));
+        }
+        unset($p);
+        return['research'=>array_values($research),'physical'=>$physical];
+    }
     private function auctionScheduleGroups(array $processes):array{$groups=[];foreach($processes as $p){$no=trim((string)($p['schedule_document_no']??''));if($no===''||($p['status_code']??'')!=='jadwal_lelang')continue;$groups[$no]['ScheduleNo']=$no;$groups[$no]['ScheduleDate']=$p['schedule_document_date']??null;$groups[$no]['Items'][]=$p;}return array_values($groups);}
     private function allowedInventoryActions(array $session):array{return array_values(array_filter(Domain::INVENTORY_ACTIONS,fn($a)=>Domain::can($session,Domain::actionPermission($a['Code']))));}
     private function inventoryManagementPermissions():array{$p=['inventory.create.btd','inventory.create.bdn','inventory.create.titipan'];foreach(Domain::INVENTORY_ACTIONS as $a)$p[]=Domain::actionPermission($a['Code']);return array_values(array_unique($p));}

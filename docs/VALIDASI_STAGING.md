@@ -27,6 +27,8 @@ Gunakan akun dan database staging/salinan bila memungkinkan.
 - FCL multi-kontainer dan multi-rincian barang.
 - Upload Excel massal serta rollback ketika satu baris tidak valid.
 - Pemindahan, pencacahan, request/penelitian PFPD, BMMN, peruntukan, dan pengeluaran.
+- Pada pencacahan FCL, tambahkan beberapa uraian baru lalu pastikan setiap uraian menjadi baris inventory tersendiri.
+- Pastikan seluruh uraian lama tetap tercantum, status berubah menjadi Pencacahan, dan hitungan FCL/YOR tidak bertambah karena uraian baru.
 - Bongkar/muat tidak mengubah status proses barang sebelumnya.
 - Nomor kontainer tersimpan dalam format `ABCD1234567`.
 

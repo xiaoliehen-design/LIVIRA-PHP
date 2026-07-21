@@ -67,12 +67,167 @@ final class Store
     }
     public function applyCensus(string $id,array $lines,array $in):array
     {
-        $item=$this->getInventory($id);$group=trim((string)($item['physical_unit_id']??''))?:$id;$payload=['p_inventory_id'=>$id,'p_expected_updated_at'=>$item['updated_at']??null,'p_lines'=>$lines,'p_event'=>['code'=>'pencacahan','label'=>'Pencacahan','document_no'=>trim((string)($in['document_no']??'')),'document_date'=>$this->nullableDate($in['document_date']??''),'notes'=>trim((string)($in['notes']??'')),'actor'=>trim((string)($in['actor']??'')),'document_id'=>$this->nullString($in['document_id']??'')],'p_physical_unit_id'=>$group];
-        try{return $this->rows($this->db->rest('POST','rpc/livira_apply_inventory_census',[],$payload));}catch(ApiException){
-            // Compatibility implementation for databases before the dedicated census RPC.
-            $updated=[];foreach($lines as $line){$lineId=trim((string)($line['inventory_id']??''));if($lineId==='')continue;$patch=['description'=>trim((string)($line['description']??'')),'item_kind'=>trim((string)($line['item_kind']??'')),'goods_value'=>(int)($line['goods_value']??0),'quantity'=>(float)($line['quantity']??0),'quantity_detail'=>trim((string)($line['quantity_detail']??'')),'unit'=>trim((string)($line['unit']??'')),'goods_condition'=>trim((string)($line['goods_condition']??'')),'physical_unit_id'=>$group,'pfpd_required'=>true,'status_code'=>'pencacahan','status_label'=>'Pencacahan','updated_at'=>$this->now()];$updated[]=$this->first($this->db->rest('PATCH','inventory_items',['id'=>'eq.'.$lineId,'select'=>'*'],$patch));}return $updated;
+        $item=$this->getInventory(trim($id));
+        $documentNo=trim((string)($in['document_no']??''));
+        $documentDate=$this->nullableDate($in['document_date']??'');
+        $completed=['laku','alokasi_hasil_lelang','ba_musnah','ba_serah_terima','pengeluaran_barang'];
+        if(empty($item['is_active'])||trim((string)($item['current_disposition']??''))!==''||in_array((string)($item['status_code']??''),$completed,true)||$documentNo===''||$documentDate===null||!$lines||count($lines)>100){
+            throw new ApiException('Action pencacahan tidak valid atau target sudah tidak dapat diproses.',409);
         }
+
+        $loadType=strtoupper(trim((string)($item['load_type']??'')));
+        $group=trim((string)($item['physical_unit_id']??''))?:((string)$item['id']);
+        $existing=[$item];
+        if($loadType==='FCL'){
+            $existing=$this->rows($this->db->rest('GET','inventory_items',[
+                'select'=>'*',
+                'physical_unit_id'=>'eq.'.$group,
+                'is_active'=>'eq.true',
+                'order'=>'created_at.asc',
+                'limit'=>'200',
+            ]));
+            if(!$existing)$existing=[$item];
+        }
+
+        $existingById=[];
+        foreach($existing as $current)$existingById[(string)($current['id']??'')]=$current;
+        $seen=[];$normalized=[];
+        foreach($lines as $raw){
+            $line=[
+                'inventory_id'=>trim((string)($raw['inventory_id']??'')),
+                'description'=>trim((string)($raw['description']??'')),
+                'item_kind'=>trim((string)($raw['item_kind']??'')),
+                'goods_value'=>$this->money($raw['goods_value']??0),
+                'quantity'=>$this->numeric($raw['quantity']??0),
+                'quantity_detail'=>trim((string)($raw['quantity_detail']??'')),
+                'unit'=>trim((string)($raw['unit']??'')),
+                'goods_condition'=>trim((string)($raw['goods_condition']??'')),
+            ];
+            if($line['description']===''||$line['item_kind']===''||$line['quantity']<=0||$line['unit']===''||$line['goods_condition']===''){
+                throw new ApiException('Lengkapi seluruh uraian barang hasil pencacahan.',422);
+            }
+            if($line['inventory_id']===''){
+                if($loadType!=='FCL')throw new ApiException('Uraian baru hanya dapat ditambahkan pada target FCL.',422);
+            }else{
+                if(!isset($existingById[$line['inventory_id']])||isset($seen[$line['inventory_id']]))throw new ApiException('Uraian tersimpan pada hasil pencacahan tidak valid atau ganda.',409);
+                if(trim((string)($existingById[$line['inventory_id']]['current_disposition']??''))!=='')throw new ApiException('Uraian yang sudah masuk proses penyelesaian tidak dapat dicacah.',409);
+                $seen[$line['inventory_id']]=true;
+            }
+            $normalized[]=$line;
+        }
+        if(count($seen)!==count($existingById))throw new ApiException('Seluruh uraian lama dalam target wajib tetap dicantumkan pada hasil pencacahan.',422);
+
+        $now=$this->now();$updated=[];
+        foreach($normalized as $line){
+            if($line['inventory_id']==='')continue;
+            $patch=[
+                'description'=>$line['description'],
+                'item_kind'=>$line['item_kind'],
+                'goods_value'=>$line['goods_value'],
+                'quantity'=>$line['quantity'],
+                'quantity_detail'=>$line['quantity_detail'],
+                'unit'=>$line['unit'],
+                'goods_condition'=>$line['goods_condition'],
+                'physical_unit_id'=>$group,
+                'pfpd_required'=>true,
+                'research_request_no'=>'',
+                'research_request_date'=>null,
+                'hs_code'=>'',
+                'is_restricted'=>false,
+                'restriction_rule'=>'',
+                'status_code'=>'pencacahan',
+                'status_label'=>'Pencacahan',
+                'updated_at'=>$now,
+            ];
+            $updated[]=$this->first($this->db->rest('PATCH','inventory_items',['id'=>'eq.'.$line['inventory_id'],'select'=>'*'],$patch),'Uraian inventory hasil pencacahan tidak ditemukan.');
+        }
+
+        $clonePayloads=[];$stamp=gmdate('YmdHis').'-'.bin2hex(random_bytes(5));
+        foreach($normalized as $index=>$line){
+            if($line['inventory_id']!=='')continue;
+            $clonePayloads[]=[
+                'reference_no'=>(string)($item['reference_no']??$item['determination_no']??'INV').'/CACAH-G'.str_pad((string)($index+1),2,'0',STR_PAD_LEFT).'-'.$stamp,
+                'item_type'=>$item['item_type']??'',
+                'origin_type'=>$item['origin_type']??($item['item_type']??''),
+                'bl_no'=>$item['bl_no']??'',
+                'bl_date'=>$item['bl_date']??null,
+                'manifest_no'=>$item['manifest_no']??'',
+                'manifest_date'=>$item['manifest_date']??null,
+                'manifest_position'=>$item['manifest_position']??'',
+                'determination_no'=>$item['determination_no']??'',
+                'determination_date'=>$item['determination_date']??$now,
+                'category'=>$item['category']??'',
+                'entrusted_category'=>$item['entrusted_category']??'',
+                'source_office'=>$item['source_office']??'',
+                'description'=>$line['description'],
+                'item_kind'=>$line['item_kind'],
+                'quantity'=>$line['quantity'],
+                'quantity_detail'=>$line['quantity_detail'],
+                'unit'=>$line['unit'],
+                'goods_value'=>$line['goods_value'],
+                'goods_condition'=>$line['goods_condition'],
+                'location'=>$item['location']??'',
+                'location_status'=>$item['location_status']??'',
+                'at_tpp'=>(bool)($item['at_tpp']??false),
+                'owner_name'=>$item['owner_name']??'',
+                'owner_address'=>$item['owner_address']??'',
+                'origin_warehouse'=>$item['origin_warehouse']??'',
+                'facility_id'=>trim((string)($item['facility_id']??''))===''?null:$item['facility_id'],
+                'facility_name'=>$item['facility_name']??'',
+                'load_type'=>'FCL',
+                'container_no'=>$item['container_no']??'',
+                'container_size'=>$item['container_size']??'',
+                'estimated_volume_m3'=>$item['estimated_volume_m3']??0,
+                'physical_unit_id'=>$group,
+                'occupancy_primary'=>false,
+                'pfpd_required'=>true,
+                'research_request_no'=>'',
+                'research_request_date'=>null,
+                'hs_code'=>'',
+                'is_restricted'=>false,
+                'restriction_rule'=>'',
+                'origin_document_type'=>$item['origin_document_type']??'',
+                'origin_document_no'=>$item['origin_document_no']??'',
+                'origin_document_date'=>$item['origin_document_date']??null,
+                'allocation_purpose'=>$item['allocation_purpose']??'',
+                'allocation_proposal_type'=>$item['allocation_proposal_type']??'',
+                'allocation_proposal_no'=>$item['allocation_proposal_no']??'',
+                'allocation_proposal_date'=>$item['allocation_proposal_date']??null,
+                'allocation_approval_type'=>$item['allocation_approval_type']??'',
+                'allocation_approval_no'=>$item['allocation_approval_no']??'',
+                'allocation_approval_date'=>$item['allocation_approval_date']??null,
+                'exit_document_no'=>'',
+                'exit_document_date'=>null,
+                'exit_type'=>'',
+                'exit_notes'=>'',
+                'status_code'=>'pencacahan',
+                'status_label'=>'Pencacahan',
+                'current_disposition'=>null,
+                'is_active'=>true,
+                'created_by'=>trim((string)($in['actor']??'')),
+                'created_at'=>$now,
+                'updated_at'=>$now,
+            ];
+        }
+        if($clonePayloads)$updated=array_merge($updated,$this->rows($this->db->rest('POST','inventory_items',['select'=>'*'],$clonePayloads)));
+        if(!$updated)throw new ApiException('Tidak ada uraian hasil pencacahan yang dapat disimpan.',422);
+
+        $events=[];
+        foreach($updated as $current)$events[]=[
+            'inventory_id'=>$current['id'],
+            'code'=>'pencacahan',
+            'label'=>'Pencacahan',
+            'document_no'=>$documentNo,
+            'document_date'=>$documentDate,
+            'notes'=>trim((string)($in['notes']??'')),
+            'actor'=>trim((string)($in['actor']??'')),
+            'document_id'=>$this->nullString($in['document_id']??''),
+            'created_at'=>$now,
+        ];
+        $this->db->rest('POST','events',[],$events);
+        return $updated;
     }
+
     public function relocateLoad(string $id,array $allocations,array $in):array{$item=$this->getInventory($id);$payload=['p_inventory_id'=>$id,'p_expected_updated_at'=>$item['updated_at']??null,'p_allocations'=>$allocations,'p_event'=>['code'=>'pindah_bongkar_kontainer','label'=>'Bongkar/Muat Kontainer','document_no'=>trim((string)($in['document_no']??'')),'document_date'=>$this->nullableDate($in['document_date']??''),'notes'=>trim((string)($in['notes']??'')),'actor'=>trim((string)($in['actor']??'')),'document_id'=>$this->nullString($in['document_id']??'')]];return $this->rows($this->db->rest('POST','rpc/livira_relocate_inventory_load',[],$payload));}
     public function timeline(string $inventoryId):array{$events=$this->rows($this->db->rest('GET','events',['select'=>'*','inventory_id'=>'eq.'.$inventoryId,'order'=>'created_at.asc','limit'=>'5000']));foreach($events as &$e)if(!empty($e['document_id']))$e['attachments'][]=['id'=>$e['document_id'],'download_url'=>'/documents/'.$e['document_id'].'/download'];return $events;}
     public function processTimeline(string $id):array{return $this->rows($this->db->rest('GET','events',['select'=>'*','disposition_id'=>'eq.'.$id,'order'=>'created_at.asc','limit'=>'1000']));}
@@ -123,6 +278,8 @@ final class Store
     public function reconcile(array $in):array{$type=trim((string)($in['type']??''));if($type==='found_not_recorded'){$new=$in['new_item']??[];$new['reconciliation_created']=true;$new['actor']=$in['actor'];$new['document_id']=$in['document_id']??'';$item=$this->createInventory($new);$record=$this->first($this->db->rest('POST','reconciliations',['select'=>'*'],['reconciliation_type'=>$type,'action'=>'added','inventory_id'=>$item['id'],'inventory_reference'=>$item['reference_no'],'inventory_type'=>$item['item_type'],'result_status_code'=>$item['status_code'],'result_status_label'=>$item['status_label'],'notes'=>$in['notes'],'actor'=>$in['actor']]));return [$record,$item];}$item=$this->getInventory((string)$in['inventory_id']);$updated=$this->first($this->db->rest('PATCH','inventory_items',['id'=>'eq.'.$item['id'],'select'=>'*'],['is_active'=>false,'current_disposition'=>null,'status_code'=>'rekonsiliasi_tidak_ditemukan','status_label'=>'Tidak ditemukan di lapangan','location_status'=>'Tidak ditemukan saat rekonsiliasi','updated_at'=>$this->now()]));$this->db->rest('PATCH','dispositions',['inventory_id'=>'eq.'.$item['id'],'is_active'=>'eq.true'],['is_active'=>false,'updated_at'=>$this->now()]);$this->db->rest('POST','events',[],['inventory_id'=>$item['id'],'code'=>$updated['status_code'],'label'=>$updated['status_label'],'notes'=>$in['notes'],'actor'=>$in['actor'],'created_at'=>$this->now(),'document_id'=>$this->nullString($in['document_id']??'')]);$record=$this->first($this->db->rest('POST','reconciliations',['select'=>'*'],['reconciliation_type'=>$type,'action'=>'removed','inventory_id'=>$item['id'],'inventory_reference'=>$item['reference_no'],'inventory_type'=>$item['item_type'],'previous_status_code'=>$item['status_code'],'previous_status_label'=>$item['status_label'],'result_status_code'=>$updated['status_code'],'result_status_label'=>$updated['status_label'],'notes'=>$in['notes'],'actor'=>$in['actor']]));return [$record,$updated];}
     public function correctInventory(array $payload):array{return (array)$this->db->rest('POST','rpc/livira_correct_inventory_data',[],$payload);}
 
+    private function numeric(mixed $v):float{$s=str_replace(',','.',preg_replace('/[^0-9,.-]/','',(string)$v));return is_numeric($s)?(float)$s:0.0;}
+    private function money(mixed $v):int{return max(0,(int)preg_replace('/\D/','',(string)$v));}
     private function date(mixed $v):?string{if(!is_string($v)||trim($v)==='')return null;$t=strtotime($v);return $t===false?null:date('Y-m-d',$t);}
     private function nullableDate(mixed $v):?string{$d=$this->date($v);return $d===null?null:$d;}
     private function bool(mixed $v):bool{return filter_var($v,FILTER_VALIDATE_BOOL)||in_array(strtolower((string)$v),['1','ya','yes','on'],true);}

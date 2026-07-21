@@ -11,7 +11,7 @@ Paket ini adalah aplikasi **PHP-only**. Tidak ada source Go, `go.mod`, `go.sum`,
 - Role hanya dapat dihapus ketika tidak digunakan pengguna.
 - Dashboard seluruh kantor, TPS, seluruh TPP, per TPP, BTD/BDN/BMMN/barang titipan, kapasitas, YOR/SOR, dan performa.
 - Inventory BTD, BDN, BMMN, barang titipan, FCL/LCL, multi-kontainer dan multi-rincian barang.
-- Action pemindahan, pemberitahuan, pencacahan, request/penelitian PFPD, penetapan/peruntukan BMMN, pengeluaran, dan bongkar/muat tanpa mengubah status barang.
+- Action pemindahan, pemberitahuan, pencacahan multi-uraian per kontainer, request/penelitian PFPD, penetapan/peruntukan BMMN, pengeluaran, dan bongkar/muat tanpa mengubah status barang.
 - Proses lelang, pemusnahan, hibah/PSP, pengalihan hasil lelang, dan history.
 - Rekonsiliasi fisik serta perubahan data barang dengan nilai sebelum/sesudah dan audit.
 - Upload Excel massal, template Excel, upload dokumen private Supabase Storage, pencarian, pagination, notifikasi, dan ekspor CSV/XLS/XLSX.
@@ -113,12 +113,14 @@ Validasi mencakup:
 - pemeriksaan JavaScript;
 - router dinamis;
 - CAPTCHA sekali pakai;
-- operasi inventory;
+- operasi inventory, termasuk pencacahan FCL dengan uraian lama dan uraian baru;
 - normalisasi nomor kontainer;
 - penghapusan role kosong dan penolakan role terpakai;
 - ekspor/baca ulang XLSX;
-- kernel PHP, health check, dan halaman login;
-- verifikasi bahwa paket tidak mengandung source/runtime Go.
+- kernel PHP, health check, halaman login, dan pemutusan sesi logout;
+- verifikasi bahwa paket tidak mengandung source/runtime Go;
+- pengujian regresi tombol logout dan idle logout;
+- pengujian form pencacahan tanpa `inventory_ids[]`, target inventory utama, dan penyimpanan multi-uraian.
 
 ## Keamanan produksi
 
@@ -134,7 +136,3 @@ Validasi mencakup:
 ## Catatan pengujian produksi
 
 Paket telah diuji secara lokal dengan PHP dan demo store. Koneksi live ke Supabase produksi tidak dapat diuji tanpa credential milik Anda. Lakukan deploy staging terlebih dahulu dan jalankan checklist pada [docs/VALIDASI_STAGING.md](docs/VALIDASI_STAGING.md) sebelum memindahkan domain produksi.
-
-### Catatan routing Render
-
-Paket v1.0.2 menggunakan Apache VirtualHost dengan front controller eksplisit. Semua URL aplikasi non-file diarahkan ke `public/index.php`, sehingga route seperti `/login`, `/inventory`, dan `/healthz` berfungsi di Render Docker.
