@@ -1,0 +1,294 @@
+{{define "content"}}
+<section class="page-intro page-intro-actions">
+  <div><p>{{.Subtitle}}</p></div>
+  <div class="intro-actions inventory-intro-actions">
+    {{if .History}}
+    <a class="button secondary" href="/inventory"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Kembali ke inventory aktif</a>
+    {{else}}
+    <a class="button secondary history-button" href="/inventory?history=1"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>History</a>
+    {{if .CanCreateBTD}}<button class="button primary inventory-entry-button" type="button" data-open-inventory-modal="BTD"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Pencatatan BTD</button>{{end}}
+    {{if .CanCreateBDN}}<button class="button primary inventory-entry-button" type="button" data-open-inventory-modal="BDN"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Penetapan BDN</button>{{end}}
+    {{if .CanCreateTitipan}}<button class="button primary inventory-entry-button" type="button" data-open-inventory-modal="TITIPAN"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Pemasukan barang titipan</button>{{end}}
+    {{if .CanRunInventoryActions}}<button class="button primary inventory-action-button" type="button" data-open-inventory-action><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>Action</button>{{end}}
+    {{end}}
+  </div>
+</section>
+
+<section class="inventory-tabs" aria-label="Jenis inventory">
+  <a class="{{if eq .InventoryType ""}}active{{end}}" href="/inventory?{{if .History}}history=1&{{end}}tpp={{.FacilityID}}&q={{.Query}}">Semua <span>{{.Pagination.TotalItems}}</span></a>
+  {{if can .User "inventory.type.btd"}}<a class="{{if eq .InventoryType "BTD"}}active{{end}}" href="/inventory?{{if .History}}history=1&{{end}}type=btd&tpp={{.FacilityID}}&q={{.Query}}">BTD</a>{{end}}
+  {{if can .User "inventory.type.bdn"}}<a class="{{if eq .InventoryType "BDN"}}active{{end}}" href="/inventory?{{if .History}}history=1&{{end}}type=bdn&tpp={{.FacilityID}}&q={{.Query}}">BDN</a>{{end}}
+  {{if can .User "inventory.type.bmmn"}}<a class="{{if eq .InventoryType "BMMN"}}active{{end}}" href="/inventory?{{if .History}}history=1&{{end}}type=bmmn&tpp={{.FacilityID}}&q={{.Query}}">BMMN</a>{{end}}
+  {{if can .User "inventory.type.titipan"}}<a class="{{if eq .InventoryType "TITIPAN"}}active{{end}}" href="/inventory?{{if .History}}history=1&{{end}}type=titipan&tpp={{.FacilityID}}&q={{.Query}}">Barang Titipan</a>{{end}}
+</section>
+
+<section class="panel table-panel">
+  <form class="table-toolbar" method="get" action="/inventory">
+    {{if .History}}<input type="hidden" name="history" value="1">{{end}}
+    <input type="hidden" name="type" value="{{lower .InventoryType}}">
+    <input type="hidden" name="page_size" value="{{.Pagination.PageSize}}">
+    <label class="search-field"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" name="q" value="{{.Query}}" placeholder="Cari nomor penetapan, kontainer, uraian, atau pemilik…"><kbd>/</kbd></label>
+    <label class="select-field"><span>TPP</span><select name="tpp" data-auto-submit><option value="">Semua TPP</option>{{range .Facilities}}<option value="{{.ID}}" {{if eq $.FacilityID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+    <label class="select-field"><span>Status</span><select name="status" data-auto-submit><option value="">Semua status</option><option value="masih_di_tps" {{if eq .Status "masih_di_tps"}}selected{{end}}>Masih di TPS</option><option value="ditetapkan" {{if eq .Status "ditetapkan"}}selected{{end}}>Baru ditetapkan</option><option value="pemindahan" {{if eq .Status "pemindahan"}}selected{{end}}>Pemindahan</option><option value="pencacahan" {{if eq .Status "pencacahan"}}selected{{end}}>Pencacahan</option><option value="request_penelitian_pfpd" {{if eq .Status "request_penelitian_pfpd"}}selected{{end}}>Request PFPD</option><option value="penelitian_pfpd" {{if eq .Status "penelitian_pfpd"}}selected{{end}}>Penelitian PFPD</option><option value="bmmn_aktif" {{if eq .Status "bmmn_aktif"}}selected{{end}}>BMMN aktif</option><option value="usulan_peruntukan_bmmn" {{if eq .Status "usulan_peruntukan_bmmn"}}selected{{end}}>Usulan peruntukan</option><option value="persetujuan_peruntukan_bmmn" {{if eq .Status "persetujuan_peruntukan_bmmn"}}selected{{end}}>Persetujuan peruntukan</option></select></label>
+    <label class="select-field sort-field"><span>Urutkan</span><select name="sort" data-auto-submit><option value="newest" {{if eq .Sort "newest"}}selected{{end}}>Pembaruan terbaru</option><option value="determination_newest" {{if eq .Sort "determination_newest"}}selected{{end}}>Penetapan terbaru</option><option value="oldest" {{if eq .Sort "oldest"}}selected{{end}}>Penetapan terlama</option><option value="value_desc" {{if eq .Sort "value_desc"}}selected{{end}}>Nilai tertinggi</option><option value="value_asc" {{if eq .Sort "value_asc"}}selected{{end}}>Nilai terendah</option><option value="container_asc" {{if eq .Sort "container_asc"}}selected{{end}}>Kontainer A–Z</option><option value="container_desc" {{if eq .Sort "container_desc"}}selected{{end}}>Kontainer Z–A</option><option value="tpp" {{if eq .Sort "tpp"}}selected{{end}}>Nama TPP</option></select></label>
+    <button class="button compact filter-button" type="submit">Terapkan</button>
+  </form>
+
+  <div class="table-meta"><p>Menampilkan <strong>{{.Pagination.StartItem}}–{{.Pagination.EndItem}}</strong> dari {{.Pagination.TotalItems}} {{if .History}}barang dalam riwayat{{else}}barang aktif{{end}}</p><span><i class="legend-dot green"></i>Nomor penetapan membuka detail; status kanan membuka timestamp</span></div>
+  <div class="table-scroll-top" data-table-scroll-top aria-label="Geser tabel ke samping"><div></div></div>
+  <div class="table-pagination">
+    <div class="page-size-picker"><span>Tampilkan</span>{{range .Pagination.Sizes}}<a class="{{if .Selected}}active{{end}}" href="{{.URL}}">{{.Value}}</a>{{end}}<span>baris</span></div>
+    <div class="page-navigation"><span>Halaman {{.Pagination.Page}} dari {{.Pagination.TotalPages}} · Total {{.Pagination.TotalItems}} item</span>{{if .Pagination.HasPrevious}}<a href="{{.Pagination.PreviousURL}}">Sebelumnya</a>{{else}}<span class="disabled">Sebelumnya</span>{{end}}{{if .Pagination.HasNext}}<a href="{{.Pagination.NextURL}}">Berikutnya</a>{{else}}<span class="disabled">Berikutnya</span>{{end}}</div>
+  </div>
+  <div class="table-wrap" data-table-scroll-body>
+    <table class="data-table inventory-table">
+      <thead><tr><th>Jenis</th><th>Nomor penetapan</th><th>Kontainer / manifest</th><th>Uraian & jenis barang</th><th>Jumlah</th><th>Nilai barang</th><th>Status lokasi</th><th>Umur</th><th class="status-column">Status barang</th>{{if eq .User.Role "admin"}}<th class="admin-action-column">Admin</th>{{end}}</tr></thead>
+      <tbody>
+      {{range .Items}}
+        <tr>
+          <td><span class="type-pill {{lower .Type}}">{{if eq .Type "TITIPAN"}}Barang Titipan{{else}}{{.Type}}{{end}}</span><small>{{if eq .Type "TITIPAN"}}{{.EntrustedCategory}}{{if .SourceOffice}} · {{.SourceOffice}}{{end}}{{else}}Asal {{.OriginType}}{{end}}</small></td>
+          <td><button class="reference-button" type="button" data-detail-url="/api/inventory/{{.ID}}"><strong>{{.DeterminationNo}}</strong><small>{{date .DeterminationDate}}</small></button></td>
+          <td>{{if .ContainerNo}}<strong>{{.ContainerNo}}</strong><small>Ukuran {{containerSizeLabel .ContainerSize}} · {{.ManifestNo}} · Pos {{.ManifestPosition}}</small>{{else}}<strong>LCL · {{number .EstimatedVolumeM3}} m³</strong><small>{{.ManifestNo}} · Pos {{.ManifestPosition}}</small>{{end}}</td>
+          <td class="description-cell"><strong>{{.Description}}</strong><small>{{if .ItemKind}}{{.ItemKind}}{{else}}Jenis belum dirinci{{end}}{{if .GoodsCondition}} · Kondisi {{.GoodsCondition}}{{end}}</small></td>
+          <td><strong>{{number .Quantity}}</strong><small>{{.Unit}}</small></td>
+          <td><strong>{{rupiah .GoodsValue}}</strong><small>Nilai penelitian</small></td>
+          <td><span class="location-pill {{if .AtTPP}}at-tpp{{else}}at-tps{{end}}">{{.LocationStatus}}</span><small>{{.Location}}</small></td>
+          <td><span class="age-pill {{if ge (age . $.Now) 45}}danger{{else if ge (age . $.Now) 30}}warning{{end}}">{{age . $.Now}} hari</span></td>
+          <td class="status-column"><button class="status-button {{statusTone .StatusCode}}" type="button" data-timeline-url="/api/inventory/{{.ID}}/timeline"><span>{{.StatusLabel}}</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><small>Diperbarui {{date .UpdatedAt}}</small></td>
+          {{if eq $.User.Role "admin"}}<td class="admin-action-column"><form method="post" action="/admin/inventory/{{.ID}}/delete" data-delete-inventory-form data-delete-reference="{{.DeterminationNo}}"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="return_to" value="{{if $.History}}/inventory?history=1{{else}}/inventory{{end}}"><button class="delete-inventory-button" type="submit" title="Hapus data barang secara permanen"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></svg><span>Hapus</span></button></form></td>{{end}}
+        </tr>
+{{else}}
+        <tr><td colspan="{{if eq .User.Role "admin"}}10{{else}}9{{end}}"><div class="empty-state"><span><svg viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5"/></svg></span><h3>Inventory tidak ditemukan</h3><p>Ubah filter atau tambahkan pencatatan BTD, penetapan BDN maupun pemasukan barang titipan baru.</p></div></td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{{if not .History}}
+{{if .CanCreateInventory}}
+<div class="modal" id="inventory-create-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title" hidden>
+  <div class="modal-backdrop" data-close-modal></div>
+  <section class="modal-panel modal-panel-wide">
+    <header class="modal-header"><div><p class="eyebrow">Input awal inventory</p><h2 id="inventory-modal-title">Pencatatan BTD</h2><p data-inventory-modal-description>Barang baru secara default dicatat masih berada di TPS.</p></div><button class="icon-button" type="button" data-close-modal aria-label="Tutup"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <div class="inventory-entry-mode" role="tablist" aria-label="Metode input inventory">
+      <button class="active" type="button" role="tab" aria-selected="true" data-inventory-entry-mode="manual"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 16l9-9 3 3-9 9H6z"/></svg><span><strong>Isi form</strong><small>Input satu dokumen secara manual</small></span></button>
+      <button type="button" role="tab" aria-selected="false" data-inventory-entry-mode="excel"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg><span><strong>Upload Excel</strong><small>Masukkan banyak barang sekaligus</small></span></button>
+    </div>
+    <form class="modal-form" method="post" action="/inventory" enctype="multipart/form-data" data-inventory-manual-form>
+      <input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="item_type" value="BTD" data-item-type-input>
+      <fieldset><legend data-document-fieldset-title>Dokumen penetapan</legend><div class="form-grid cols-3"><label><span data-determination-no-label>Nomor penetapan</span> <em>*</em><input name="determination_no" placeholder="Nomor dokumen penetapan" required></label><label><span data-determination-date-label>Tanggal penetapan</span> <em>*</em><input type="date" name="determination_date" value="{{isoDate .Now}}" required></label><label data-bdn-category hidden>Kategori BDN <em>*</em><select name="category" disabled><option value="">Pilih kategori BDN</option>{{range .BDNCategoryNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label><label class="span-3 document-upload-field">Upload dokumen dasar <span class="optional-mark">Opsional</span><input type="file" name="document_file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"><small>PDF atau gambar, maksimal 8 MB. File tersimpan pada jejak audit.</small></label></div><div class="form-grid cols-2" data-entrusted-fields hidden><label>Kategori barang <em>*</em><select name="entrusted_category" disabled><option value="">Pilih kategori barang</option>{{range .EntrustedCategoryNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label><label>Kantor/unit penitip <em>*</em><input name="source_office" placeholder="Nama kantor atau unit asal" disabled></label></div></fieldset>
+      <fieldset><legend data-manifest-fieldset-title>BL, manifest, muatan, dan TPS asal</legend>
+        <div class="form-grid cols-3"><label data-bl-field>Nomor BL <em>*</em><input name="bl_no" data-bl-input maxlength="120" required></label><label data-bl-date-field>Tanggal BL <em>*</em><input type="date" name="bl_date" data-bl-date-input required></label><label>Nomor manifest<input name="manifest_no" placeholder="BC 1.1-______"></label><label>Tanggal manifest<input type="date" name="manifest_date"></label><label>Pos manifest<input name="manifest_position" placeholder="0000"></label><label>Jenis muatan <em>*</em><select name="load_type" required data-load-type-select><option value="">Pilih jenis muatan</option>{{range .LoadTypeOptions}}<option value="{{.Code}}">{{.Label}}</option>{{end}}</select></label><label class="span-2" data-origin-tps-field>TPS asal <em>*</em><select name="origin_warehouse" required><option value="">Pilih TPS asal</option>{{range .TPSNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label></div>
+        <section class="container-entry-section" data-fcl-container-section hidden>
+          <div class="container-entry-heading"><div><h3>Kontainer dan identitas barang <em>*</em></h3><p>Tambahkan kontainer, lalu isi satu atau beberapa identitas barang di dalam kontainer tersebut. Setiap identitas menjadi satu baris inventory, tetapi kapasitas YOR tetap menghitung satu kontainer.</p></div><strong data-container-count>0 kontainer</strong></div>
+          <div class="container-entry-composer"><label class="container-draft-field">Ukuran peti kemas<select data-container-size-draft><option value="">Pilih ukuran</option>{{range .ContainerSizeOptions}}<option value="{{.Code}}">{{.Label}}</option>{{end}}</select></label><label class="container-draft-field">Nomor kontainer<input data-container-number-draft placeholder="ABCD 123456-7" autocomplete="off"></label><button class="button secondary compact" type="button" data-add-container>Tambah kontainer</button></div>
+          <input type="hidden" name="containers_json" value="[]" data-containers-json disabled>
+          <div class="initial-container-list" data-container-card-list><p class="container-list-empty">Belum ada kontainer. Tambahkan kontainer pertama untuk mulai mengisi identitas barang.</p></div>
+        </section>
+        <section class="lcl-volume-section" data-lcl-volume-section hidden>
+          <label class="lcl-volume-field">Perkiraan volume barang <em>*</em><input type="number" min="0.01" step="0.01" name="estimated_volume_m3" data-lcl-volume-input disabled placeholder="Contoh: 18.5"><small class="field-inline-help">Satuan meter kubik (m³); digunakan untuk perhitungan SOR.</small></label>
+          <div class="initial-goods-editor"><div class="container-entry-heading"><div><h3>Identitas barang LCL <em>*</em></h3><p>Tambahkan seluruh uraian barang dalam satu pengiriman LCL. Setiap identitas akan tampil sebagai satu baris inventory.</p></div><strong data-lcl-goods-count>0 barang</strong></div><input type="hidden" name="lcl_goods_json" value="[]" data-lcl-goods-json disabled><div data-lcl-goods-lines></div><button class="button secondary compact" type="button" data-add-lcl-goods-line>+ Tambah identitas barang</button></div>
+        </section>
+        <template data-initial-goods-line-template><section class="initial-goods-line" data-initial-goods-line><header><strong data-goods-line-title>Identitas barang</strong><button type="button" class="remove-line-button" data-remove-goods-line>Hapus</button></header><div class="form-grid cols-2"><label class="span-2">Uraian barang <em>*</em><textarea rows="2" data-goods-field="description" placeholder="Uraian barang dari dokumen dasar"></textarea></label><label>Jenis barang <em>*</em><select data-goods-field="item_kind"><option value="">Pilih jenis barang</option>{{range .ItemKindNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label><label>Nilai awal barang<input inputmode="numeric" data-goods-field="goods_value" placeholder="Contoh: 250000000"></label><label>Jumlah <em>*</em><input type="number" step="0.01" min="0.01" data-goods-field="quantity" placeholder="0"></label><label>Satuan <em>*</em><select data-goods-field="unit"><option value="">Pilih satuan</option>{{range .UnitNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label></div></section></template>
+      </fieldset>
+      <fieldset><legend>Status lokasi saat pencatatan/penetapan</legend><div class="location-choice"><p>Apakah barang sudah berada di TPP?</p><label><input type="radio" name="at_tpp" value="belum" checked data-at-tpp-choice> Belum — status “Masih di TPS”</label><label><input type="radio" name="at_tpp" value="sudah" data-at-tpp-choice> Sudah berada di TPP</label></div><div class="form-grid cols-2 conditional-location" data-tpp-location-fields hidden><label>TPP lokasi barang <em>*</em><select name="facility_id" data-tpp-select disabled><option value="">Pilih TPP</option>{{range .Facilities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label><label>Blok / gudang di TPP<input name="location" data-tpp-location disabled placeholder="Opsional"></label></div></fieldset>
+      <fieldset><legend>Pemilik barang</legend><div class="form-grid cols-2"><label>Nama shipper / consignee<input name="owner_name" placeholder="Nama perusahaan"></label><label class="span-2">Alamat shipper / consignee<textarea name="owner_address" rows="2" placeholder="Alamat lengkap"></textarea></label></div></fieldset>
+      <footer class="modal-footer"><button class="button ghost" type="button" data-close-modal>Batal</button><button class="button primary" type="submit" data-inventory-create-submit>Simpan penetapan</button></footer>
+    </form>
+    <form class="modal-form inventory-import-form" method="post" action="/inventory/import" enctype="multipart/form-data" data-inventory-import-form hidden>
+      <input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="item_type" value="BTD" data-item-type-input>
+      <section class="inventory-import-card">
+        <div class="inventory-import-copy"><span class="import-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span><div><p class="eyebrow">Upload massal</p><h3 data-import-title>Upload banyak Pencatatan BTD</h3><p>Gunakan template resmi sesuai jenis pemasukan. Setiap baris yang valid akan disimpan sebagai satu baris inventory.</p></div></div>
+        <div class="inventory-template-box"><div><strong>1. Unduh template Excel</strong><p>Template sudah berisi kolom wajib, dropdown referensi, petunjuk, dan contoh isian pada baris kedua.</p></div><a class="button secondary" href="/assets/templates/template_upload_btd.xlsx" download data-import-template-link><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Unduh template BTD</a></div>
+        <label class="inventory-file-drop"><input type="file" name="excel_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required data-inventory-excel-file><span class="file-drop-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span><span><strong>2. Pilih file Excel yang sudah diisi</strong><small data-inventory-file-name>Belum ada file dipilih · format .xlsx · maksimal 1.000 baris / 6 MB</small></span><em>Pilih file</em></label>
+        <aside class="inventory-import-note"><strong>Sebelum menyimpan</strong><p>Hapus atau timpa contoh pada baris kedua. Satu baris mewakili satu identitas barang. Nomor kontainer FCL boleh diulang untuk beberapa barang dalam kontainer yang sama selama data dokumen dan kontainernya konsisten.</p></aside>
+      </section>
+      <footer class="modal-footer"><button class="button ghost" type="button" data-close-modal>Batal</button><button class="button primary" type="submit" data-inventory-import-submit>Upload dan simpan ke inventory</button></footer>
+    </form>
+  </section>
+</div>
+{{end}}
+
+{{if .CanRunInventoryActions}}
+<div class="modal action-modal" id="inventory-action-drawer" role="dialog" aria-modal="true" aria-labelledby="inventory-action-title" hidden>
+  <div class="modal-backdrop" data-close-modal></div>
+  <section class="modal-panel modal-panel-wide action-modal-panel">
+    <header class="modal-header"><div><p class="eyebrow">Action inventory</p><h2 id="inventory-action-title" data-action-modal-title data-default-title="Pilih submenu action inventory">Pilih submenu action inventory</h2><p data-action-modal-description data-default-description="Pilih action yang ingin dikerjakan. Form lengkap akan terbuka setelah submenu dipilih.">Pilih action yang ingin dikerjakan. Form lengkap akan terbuka setelah submenu dipilih.</p></div><button class="icon-button" type="button" data-close-modal aria-label="Tutup"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <form method="post" action="/inventory/bulk-event" enctype="multipart/form-data" data-inventory-action-form>
+      <input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="event_code" data-event-code>
+      <div class="action-modal-scroll">
+        <section class="action-menu-stage" data-action-menu>
+          <div class="action-menu-intro"><strong>Pilih jenis action</strong><p>Klik salah satu submenu di bawah. Setelah dipilih, sistem menampilkan form action dalam popup yang lebih lebar dan mudah dikerjakan.</p></div>
+          <div class="step-picker action-step-grid">
+            {{range .InventoryActions}}<button type="button" class="step-option {{if eq .Code "penetapan_bmmn"}}highlight{{end}} {{if eq .Code "pengeluaran_barang"}}final-step{{end}}" data-step-code="{{.Code}}" data-step-label="{{.Label}}" data-step-description="{{.Description}}" data-step-document="{{.Document}}" data-bmmn-only="{{.BMMNOnly}}" data-non-bmmn-only="{{.NonBMMNOnly}}"><span class="step-check"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><span><strong>{{.Label}}</strong><small>{{.Description}}</small></span><svg class="step-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>{{end}}
+          </div>
+        </section>
+        <section class="action-detail-stage" data-action-detail hidden>
+          <div class="action-detail-toolbar"><button class="button ghost compact action-back-button" type="button" data-back-action-menu><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Kembali ke daftar action</button><div class="selected-step" data-selected-step hidden><span>Action dipilih</span><strong data-selected-step-label></strong></div></div>
+
+        <section class="action-field-section inventory-multi-picker" data-inventory-picker hidden>
+          <div class="picker-heading"><div><h3>Pilih kontainer / barang</h3><p>Cari berdasarkan nomor penetapan, nomor kontainer, atau uraian barang.</p></div><strong data-picker-count>0 barang dipilih</strong></div>
+          <div class="picker-controls">
+            <label class="search-field large"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-inventory-picker-search placeholder="Cari kontainer, nomor penetapan, atau uraian…" autocomplete="off"></label>
+            <div class="picker-selection-toolbar"><label class="picker-select-all"><input type="checkbox" data-picker-select-all><span>Pilih semua hasil yang tampil</span></label><button type="button" class="picker-clear" data-picker-clear>Kosongkan pilihan</button></div>
+          </div>
+          <div class="multi-picker-list" data-inventory-picker-list>
+            {{range .EligibleItems}}
+            <label class="multi-picker-item" data-picker-item data-search="{{lower .DeterminationNo}} {{lower .ContainerNo}} {{lower .Description}} {{lower .ResearchRequestNo}}" data-item-type="{{.Type}}" data-item-status="{{.StatusCode}}" data-item-status-label="{{.StatusLabel}}" data-current-disposition="{{.CurrentDisposition}}" data-item-request="{{.ResearchRequestNo}}" data-allocation-proposal="{{.AllocationProposalNo}}" data-description="{{.Description}}" data-item-kind="{{.ItemKind}}" data-quantity="{{.Quantity}}" data-unit="{{.Unit}}">
+              <input type="checkbox" name="inventory_ids" value="{{.ID}}" data-picker-checkbox>
+              <span><strong>{{if .ContainerNo}}{{.ContainerNo}} · {{.ContainerSize}}'{{else}}LCL · {{number .EstimatedVolumeM3}} m³{{end}}</strong><small>{{.Type}} · {{.DeterminationNo}}</small><em>{{.Description}}</em></span>
+              <i>{{.StatusLabel}}</i>
+            </label>
+            {{end}}
+          </div>
+          <p class="picker-empty" data-picker-empty hidden>Tidak ada barang yang sesuai dengan action atau pencarian.</p>
+        </section>
+
+        <section class="action-field-section relocation-picker" data-relocation-picker hidden>
+          <div class="picker-heading"><div><h3>Pilih target bongkar/muat</h3><p>Target FCL ditampilkan <strong>satu kali per kontainer</strong>. Setelah kontainer dipilih, seluruh uraian barang di dalamnya akan muncul dan wajib dialokasikan. Target LCL tetap dipilih per uraian barang.</p></div><strong data-relocation-source-count>0 target dipilih</strong></div>
+          <input type="hidden" name="container_relocation_json" data-relocation-json disabled>
+          <div class="picker-controls relocation-picker-controls"><label>Mode proses <em>*</em><select data-relocation-mode><option value="bongkar">Bongkar / pindah kontainer</option><option value="muat">Muat ke kontainer</option></select></label><label class="search-field large"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-relocation-search placeholder="Cari nomor kontainer, penetapan, atau uraian barang…" autocomplete="off"></label></div>
+          <div class="relocation-source-list" data-relocation-source-list>
+            {{range .RelocationTargetGroups}}{{$group := .}}
+            <article class="relocation-source-item" data-relocation-source data-source-key="{{.TargetKey}}" data-search="{{lower .DeterminationNo}} {{lower .ContainerNo}} {{range .Items}}{{lower .Description}} {{lower .DeterminationNo}} {{end}}" data-load-type="{{.LoadType}}" data-container-no="{{.ContainerNo}}" data-container-size="{{.ContainerSize}}" data-determination-no="{{.DeterminationNo}}" data-item-type="{{.InventoryType}}">
+              <label class="relocation-source-select"><input type="checkbox" data-relocation-source-checkbox disabled><span><strong>{{if eq .LoadType "FCL"}}{{.ContainerNo}} · {{containerSizeLabel .ContainerSize}}{{else}}LCL · {{.DeterminationNo}}{{end}}</strong><small>{{.InventoryType}} · {{len .Items}} uraian barang · {{.StatusLabel}}</small><em>{{if eq .LoadType "FCL"}}Pilih sekali untuk mengalokasikan seluruh uraian dalam kontainer{{else}}{{with index .Items 0}}{{.Description}}{{end}}{{end}}</em></span><i>{{if eq .LoadType "FCL"}}Sumber FCL{{else}}Sumber LCL{{end}}</i></label>
+              <div data-relocation-source-items hidden>
+                {{range .Items}}<span data-relocation-source-item data-inventory-id="{{.ID}}" data-load-type="{{.LoadType}}" data-container-no="{{.ContainerNo}}" data-container-size="{{.ContainerSize}}" data-volume="{{.EstimatedVolumeM3}}" data-quantity="{{.Quantity}}" data-unit="{{.Unit}}" data-goods-value="{{.GoodsValue}}" data-description="{{.Description}}" data-determination-no="{{.DeterminationNo}}"></span>{{end}}
+              </div>
+            </article>
+            {{else}}<div class="picker-empty static-empty">Belum ada inventory yang dapat diproses.</div>{{end}}
+          </div>
+          <p class="picker-empty" data-relocation-empty hidden>Target tidak ditemukan atau tidak memenuhi syarat mode bongkar/muat yang dipilih.</p>
+          <div class="relocation-editor-list" data-relocation-editor-list hidden></div>
+
+          <template data-relocation-operation-template>
+            <article class="relocation-operation-card" data-relocation-operation>
+              <section class="relocation-group-summary"><div><span>Target terpilih</span><strong data-relocation-group-title>—</strong><small data-relocation-group-subtitle>—</small></div><strong data-relocation-group-count>0 uraian</strong></section>
+              <div class="relocation-item-editor-list" data-relocation-item-editor-list></div>
+            </article>
+          </template>
+
+          <template data-relocation-item-template>
+            <section class="relocation-item-operation" data-relocation-item-operation>
+              <section class="relocation-source-summary"><div><span>Uraian sumber</span><strong data-relocation-source-title>—</strong><small data-relocation-source-description>—</small></div><div><span>Kuantitas wajib dialokasikan</span><strong data-relocation-required-quantity>0</strong><small data-relocation-mode-copy>Jumlah seluruh tujuan harus sama persis.</small></div></section>
+              <div class="container-entry-heading"><div><h3 data-relocation-destination-title>Tujuan bongkar/muat</h3><p data-relocation-destination-help>Tambahkan satu atau beberapa tujuan.</p></div><strong data-relocation-allocation-count>0 tujuan</strong></div>
+              <div class="relocation-allocation-list" data-relocation-allocation-list></div>
+              <button class="button secondary compact" type="button" data-add-relocation-allocation>+ Tambah tujuan</button>
+              <div class="relocation-total-bar" data-relocation-total-bar><span>Total dialokasikan</span><strong data-relocation-total>0</strong><em data-relocation-balance>Belum sesuai</em></div>
+            </section>
+          </template>
+
+          <template data-relocation-allocation-template>
+            <section class="relocation-allocation-row" data-relocation-allocation-row>
+              <header><strong data-relocation-row-title>Tujuan</strong><button type="button" class="remove-line-button" data-remove-relocation-allocation>Hapus</button></header>
+              <div class="form-grid cols-2">
+                <label>Jenis penempatan <em>*</em><select data-relocation-field="load_type"><option value="FCL">FCL — dalam kontainer</option><option value="LCL">LCL — dibongkar ke gudang</option></select></label>
+                <label>Kuantitas <em>*</em><input type="number" min="0.01" step="0.01" data-relocation-field="quantity" placeholder="0"></label>
+                <label data-relocation-container-field>Nomor kontainer <em>*</em><input data-relocation-field="container_no" placeholder="Contoh: ABCD 123456-7"></label>
+                <label data-relocation-container-field>Ukuran kontainer <em>*</em><select data-relocation-field="container_size"><option value="">Pilih ukuran</option><option value="20">20'</option><option value="40">40'</option><option value="40HC">40' HC</option><option value="45HC">45' HC</option></select></label>
+                <label class="span-2" data-relocation-volume-field hidden>Perkiraan volume LCL <em>*</em><input type="number" min="0.01" step="0.01" data-relocation-field="estimated_volume_m3" placeholder="Contoh: 4.5"><small class="field-inline-help">Satuan meter kubik (m³), digunakan untuk perhitungan SOR.</small></label>
+              </div>
+            </section>
+          </template>
+        </section>
+
+        <section class="action-field-section census-target-picker" data-census-target-picker hidden>
+          <div class="picker-heading"><div><h3>Pilih target pencacahan</h3><p>FCL dicari dan dipilih per nomor kontainer; LCL dicari dan dipilih per uraian barang. Setiap target mempunyai input hasil pencacahan sendiri.</p></div><strong data-census-picker-count>0 target dipilih</strong></div>
+          <input type="hidden" name="census_results_json" data-census-results-json disabled>
+          <div class="picker-controls"><label class="search-field large"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-census-target-search placeholder="Cari nomor kontainer FCL atau uraian barang LCL…" autocomplete="off"></label></div>
+          <div class="census-target-list">
+            {{range .CensusTargetGroups}}
+            <article class="census-target-card" data-census-target-card data-target-id="{{.TargetID}}" data-load-type="{{.LoadType}}" data-census-search="{{if eq .LoadType "FCL"}}{{lower .ContainerNo}} {{lower .DeterminationNo}}{{else}}{{range .Items}}{{lower .Description}} {{lower .DeterminationNo}} {{end}}{{end}}">
+              <label class="census-target-select"><input type="checkbox" data-census-target-checkbox><span><strong>{{if eq .LoadType "FCL"}}{{.ContainerNo}} · {{containerSizeLabel .ContainerSize}}{{else}}LCL · {{.DeterminationNo}}{{end}}</strong><small>{{.InventoryType}} · {{len .Items}} uraian tersimpan · {{.StatusLabel}}</small></span><i>{{.LoadType}}</i></label>
+              <div class="census-target-editor" data-census-target-editor hidden>
+                <div class="census-target-editor-heading"><div><strong>Detail hasil pencacahan</strong><p>{{if eq .LoadType "FCL"}}Uraian tersimpan otomatis ditampilkan. Tambahkan detail baru apabila ditemukan barang lain dalam kontainer.{{else}}Perbarui hasil pencacahan untuk barang LCL ini.{{end}}</p></div></div>
+                <div data-census-target-lines>
+                  {{range .Items}}{{$item := .}}
+                  <section class="census-result-line" data-census-result-line data-inventory-id="{{.ID}}" data-existing="true">
+                    <header><strong>Uraian tersimpan</strong><span>{{.DeterminationNo}}</span></header>
+                    <div class="form-grid cols-2">
+                      <label class="span-2">Uraian barang <em>*</em><textarea rows="2" data-census-field="description" disabled>{{.Description}}</textarea></label>
+                      <label>Jenis barang <em>*</em><select data-census-field="item_kind" disabled><option value="">Pilih jenis barang</option>{{range $.ItemKindNames}}<option value="{{.}}" {{if eq . $item.ItemKind}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+                      <label>Nilai awal barang<input inputmode="numeric" data-census-field="goods_value" value="{{.GoodsValue}}" disabled></label>
+                      <label>Jumlah <em>*</em><input type="number" step="0.01" min="0.01" value="{{.Quantity}}" data-census-field="quantity" disabled></label>
+                      <label class="span-2">Detail jumlah barang <span class="optional-label">Opsional</span><input data-census-field="quantity_detail" value="{{.QuantityDetail}}" placeholder="Contoh: 12 karton @ 24 botol" disabled></label>
+                      <label>Satuan <em>*</em><select data-census-field="unit" disabled><option value="">Pilih satuan</option>{{range $.UnitNames}}<option value="{{.}}" {{if eq . $item.Unit}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+                      <label>Kondisi barang <em>*</em><select data-census-field="goods_condition" disabled><option value="">Pilih kondisi</option>{{range $.GoodsConditionNames}}<option value="{{.}}" {{if eq . $item.GoodsCondition}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+                    </div>
+                  </section>
+                  {{end}}
+                </div>
+                {{if eq .LoadType "FCL"}}<button class="button secondary compact" type="button" data-add-census-target-line disabled>+ Tambah detail uraian baru</button>{{end}}
+              </div>
+            </article>
+            {{else}}<div class="picker-empty static-empty">Belum ada inventory yang dapat dicacah.</div>{{end}}
+          </div>
+          <p class="picker-empty" data-census-target-empty hidden>Kontainer atau barang LCL tidak ditemukan.</p>
+          <template data-census-result-line-template><section class="census-result-line new-line" data-census-result-line data-inventory-id="" data-existing="false"><header><strong>Uraian baru hasil pencacahan</strong><button type="button" class="remove-line-button" data-remove-census-target-line>Hapus</button></header><div class="form-grid cols-2"><label class="span-2">Uraian barang <em>*</em><textarea rows="2" data-census-field="description"></textarea></label><label>Jenis barang <em>*</em><select data-census-field="item_kind"><option value="">Pilih jenis barang</option>{{range .ItemKindNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label><label>Nilai awal barang<input inputmode="numeric" data-census-field="goods_value"></label><label>Jumlah <em>*</em><input type="number" step="0.01" min="0.01" data-census-field="quantity"></label><label class="span-2">Detail jumlah barang <span class="optional-label">Opsional</span><input data-census-field="quantity_detail" placeholder="Contoh: 12 karton @ 24 botol"></label><label>Satuan <em>*</em><select data-census-field="unit"><option value="">Pilih satuan</option>{{range .UnitNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label><label>Kondisi barang <em>*</em><select data-census-field="goods_condition"><option value="">Pilih kondisi</option>{{range .GoodsConditionNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label></div></section></template>
+        </section>
+
+        <section class="action-field-section pfpd-request-picker" data-pfpd-request-picker hidden>
+          <div class="picker-heading"><div><h3>Pilih nomor request penelitian PFPD</h3><p>Klik nomor request untuk membuka seluruh kontainer dan uraian barang yang harus diteliti.</p></div><strong data-pfpd-picker-count>0 request dipilih</strong></div>
+          <input type="hidden" name="pfpd_results_json" data-pfpd-results-json disabled>
+          <div class="picker-controls pfpd-picker-controls">
+            <label class="search-field large"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-pfpd-request-search placeholder="Cari nomor request penelitian PFPD…" autocomplete="off"></label>
+          </div>
+          <div class="pfpd-request-list">
+            {{range .ResearchRequestGroups}}
+            <article class="pfpd-request-card" data-pfpd-request-card data-request-no="{{.RequestNo}}" data-pfpd-search="{{lower .RequestNo}}">
+              <button type="button" class="pfpd-request-button" data-pfpd-request-button>
+                <span><strong>{{.RequestNo}}</strong><small>{{date .RequestDate}} · {{len .Items}} uraian barang</small></span>
+                <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+              <div class="pfpd-request-items" data-pfpd-request-items hidden>
+                {{range .Items}}
+                <section class="pfpd-result-row" data-pfpd-result-row data-inventory-id="{{.ID}}">
+                  <header><div><strong>{{if .ContainerNo}}{{.ContainerNo}} · {{containerSizeLabel .ContainerSize}}{{else}}LCL · {{number .EstimatedVolumeM3}} m³{{end}}</strong><small>{{.DeterminationNo}}</small></div><p>{{.Description}}</p></header>
+                  <div class="form-grid cols-2">
+                    <label>Kode HS <em>*</em><input data-pfpd-field="hs_code" disabled placeholder="Contoh: 8471.30.90"></label>
+                    <label>Apakah lartas? <em>*</em><select data-pfpd-field="is_restricted" disabled><option value="">Pilih status</option><option value="tidak">Tidak</option><option value="ya">Ya</option></select></label>
+                    <label class="span-2" data-pfpd-restriction-wrapper hidden>Keterangan lartas <em>*</em><input data-pfpd-field="restriction_rule" disabled placeholder="Isi jenis atau dasar peraturan lartas"></label>
+                    <label class="span-2">Nilai barang <em>*</em><input inputmode="numeric" data-pfpd-field="goods_value" disabled placeholder="Contoh: 250000000"></label>
+                  </div>
+                </section>
+                {{end}}
+              </div>
+            </article>
+            {{else}}<div class="picker-empty static-empty">Belum ada nomor request PFPD yang menunggu penelitian.</div>{{end}}
+          </div>
+          <p class="picker-empty" data-pfpd-search-empty hidden>Nomor request penelitian PFPD tidak ditemukan.</p>
+        </section>
+
+        <div class="action-fields" data-action-fields hidden>
+          <section class="action-field-section"><h3>Dokumen terkait</h3><div class="form-grid cols-2"><label data-document-label>Nomor dokumen <em>*</em><input name="document_no" required disabled></label><label>Tanggal dokumen <em>*</em><input type="date" name="document_date" value="{{isoDate .Now}}" required disabled></label><label class="span-2 document-upload-field">Upload dokumen <span class="optional-mark">Opsional</span><input type="file" name="document_file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif" disabled><small>PDF atau gambar, maksimal 8 MB. File dapat diunduh melalui timeline.</small></label></div></section>
+
+          <section class="action-field-section" data-fields-for="pemindahan" hidden><h3>Lokasi tujuan</h3><div class="form-grid"><label>Pindah ke TPP <em>*</em><select name="target_facility_id" required disabled><option value="">Pilih TPP tujuan</option>{{range .Facilities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label></div><p class="field-help">Setelah disimpan, status dan lokasi barang otomatis berubah ke TPP tujuan.</p></section>
+
+          <section class="action-field-section" data-fields-for="pindah_bongkar_kontainer" hidden><h3>Bongkar / muat fisik barang</h3><p class="field-help">Pada mode bongkar, barang FCL dapat dipindah ke satu atau beberapa kontainer tujuan dan/atau dibongkar menjadi LCL di gudang. Pada mode muat, barang LCL dapat dimasukkan ke satu atau beberapa kontainer. Action tersedia untuk seluruh inventory aktif, termasuk barang yang sudah mulai lelang, musnah, hibah, atau PSP. Untuk menjaga keterkaitan proses, satu uraian yang sedang/sudah berproses hanya dapat dipindahkan ke satu tujuan per action.</p></section>
+
+          <section class="action-field-section" data-fields-for="pencacahan" hidden><h3>Hasil pencacahan per target</h3><p class="field-help">Input uraian, jumlah, satuan, nilai, dan kondisi dilakukan pada setiap kontainer FCL atau barang LCL yang dipilih di bagian atas. Untuk FCL, uraian baru dapat ditambahkan tanpa menambah perhitungan kapasitas YOR.</p></section>
+
+          <section class="action-field-section" data-fields-for="request_penelitian_pfpd" hidden><h3>Request Penelitian PFPD</h3><p class="field-help">Nomor dan tanggal dokumen di atas disimpan sebagai dasar penelitian PFPD. Seluruh uraian dalam kontainer fisik yang dipilih akan otomatis memakai nomor request yang sama.</p></section>
+
+          <section class="action-field-section" data-fields-for="penelitian_pfpd" hidden><h3>Hasil Penelitian PFPD</h3><p class="field-help">Hasil diisi per kontainer dan per uraian melalui nomor request yang dipilih di atas.</p></section>
+
+          <section class="action-field-section" data-fields-for="penetapan_bmmn" hidden><h3>Penetapan BMMN</h3><p class="field-help">Status berubah menjadi BMMN. Dokumen asal otomatis dicatat sebagai BCF 1.5 untuk asal BTD atau KEP BDN untuk asal BDN, beserta nomor dan tanggalnya.</p></section>
+
+          <section class="action-field-section" data-fields-for="usulan_peruntukan_bmmn" hidden><h3>Usulan Peruntukan BMMN</h3><div class="form-grid"><label>Jenis Peruntukan <em>*</em><select name="allocation_type" required disabled><option value="">Pilih peruntukan</option>{{range .AllocationPurposeNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label></div></section>
+          <section class="action-field-section" data-fields-for="persetujuan_peruntukan_bmmn" hidden><h3>Persetujuan Peruntukan BMMN</h3><div class="form-grid"><label>Jenis Peruntukan <em>*</em><select name="allocation_type" required disabled><option value="">Pilih peruntukan</option>{{range .AllocationPurposeNames}}<option value="{{.}}">{{.}}</option>{{end}}</select></label></div></section>
+
+          <section class="action-field-section" data-fields-for="pengeluaran_barang" hidden><h3>Pengeluaran barang</h3><div class="form-grid"><label>Jenis pengeluaran <em>*</em><select name="exit_type" required disabled data-exit-type><option value="">Pilih jenis pengeluaran</option>{{range .ExitOptions}}<option value="{{.Code}}" data-types="{{.Types}}">{{.Label}}</option>{{end}}</select></label></div><p class="field-help">Pilihan otomatis disesuaikan dengan jenis BTD, BDN, BMMN, atau barang titipan yang dipilih.</p><p class="field-help danger-text">Setelah disimpan, barang keluar dari daftar inventory aktif.</p></section>
+
+          <section class="action-field-section"><h3>Catatan</h3><div class="form-grid"><label>Keterangan tambahan<textarea name="notes" rows="3" placeholder="Opsional"></textarea></label></div></section>
+        </div>
+        </section>
+      </div>
+      <footer class="modal-footer action-modal-footer"><button class="button ghost" type="button" data-close-modal>Batal</button><button class="button primary" type="submit" disabled hidden data-submit-step data-action-submit>Simpan tindak lanjut</button></footer>
+    </form>
+  </section>
+</div>
+{{end}}
+{{end}}
+
+{{end}}

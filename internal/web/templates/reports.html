@@ -1,0 +1,169 @@
+{{define "content"}}
+<section class="page-intro page-intro-actions">
+  <div><p>{{.Subtitle}}</p><strong class="report-current-title">{{.Report.Title}}</strong><small>{{.Report.Description}}</small></div>
+  {{if .ReportPerformance}}<a class="button primary" href="{{.Report.ExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Unduh Excel performa</a>{{else}}<div class="intro-actions"><a class="button secondary" href="{{.Report.CSVExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Ekspor CSV sesuai filter</a><a class="button primary" href="{{.Report.ExcelExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Ekspor Excel</a></div>{{end}}
+</section>
+
+<section class="report-preset-section" aria-labelledby="report-preset-title">
+  <div class="section-heading compact-heading"><div><p class="eyebrow">Preset laporan</p><h2 id="report-preset-title">Laporan yang sering dipakai</h2></div><a href="/pelaporan">Mulai laporan kustom</a></div>
+  <div class="report-presets">
+    <a class="report-preset-card {{if eq .Report.Preset "active_tpp"}}active{{end}}" href="/pelaporan?preset=active_tpp"><span>01</span><strong>Barang aktif per TPP</strong><small>Sebaran inventory aktif yang sudah berada di setiap TPP.</small></a>
+    <a class="report-preset-card attention {{if eq .Report.Preset "overdue_60"}}active{{end}}" href="/pelaporan?preset=overdue_60"><span>02</span><strong>BTD/BDN ≥60 hari</strong><small>Belum ditindaklanjuti setelah penetapan awal.</small></a>
+    <a class="report-preset-card value {{if eq .Report.Preset "auction_ready"}}active{{end}}" href="/pelaporan?preset=auction_ready"><span>03</span><strong>Potensi siap lelang</strong><small>Diurutkan otomatis dari nilai barang tertinggi.</small></a>
+    <a class="report-preset-card {{if eq .Report.Preset "at_tps"}}active{{end}}" href="/pelaporan?preset=at_tps"><span>04</span><strong>Masih berada di TPS</strong><small>Barang aktif yang belum dipindahkan ke TPP.</small></a>
+    <a class="report-preset-card {{if eq .Report.Preset "bmmn_allocation"}}active{{end}}" href="/pelaporan?preset=bmmn_allocation"><span>05</span><strong>BMMN menunggu peruntukan</strong><small>BMMN aktif yang belum masuk proses penyelesaian.</small></a>
+    <a class="report-preset-card {{if eq .Report.Preset "completed"}}active{{end}}" href="/pelaporan?preset=completed"><span>06</span><strong>Riwayat barang selesai</strong><small>Barang yang telah keluar dari inventory aktif.</small></a>
+    {{if can .User "reconciliation.view"}}<a class="report-preset-card attention {{if eq .Report.Preset "reconciliation"}}active{{end}}" href="/pelaporan?preset=reconciliation"><span>07</span><strong>Rekap rekonsiliasi</strong><small>Penambahan dan pengeluaran inventory berdasarkan kondisi fisik.</small></a>{{end}}
+    {{if can .User "reconciliation.view"}}<a class="report-preset-card {{if eq .Report.Preset "data_correction"}}active{{end}}" href="/pelaporan?preset=data_correction"><span>08</span><strong>Rekap perubahan data barang</strong><small>Data yang berubah lengkap dengan nilai sebelum dan sesudah.</small></a>{{end}}
+    <a class="report-preset-card value {{if eq .Report.Preset "performance"}}active{{end}}" href="/pelaporan?preset=performance"><span>09</span><strong>Performa kinerja</strong><small>Jumlah penyelesaian dan waktu rata-rata setiap tahapan.</small></a>
+    {{if can .User "inventory.type.btd"}}<a class="report-preset-card {{if eq .Report.Preset "btd"}}active{{end}}" href="/pelaporan?preset=btd"><span>10</span><strong>Laporan BTD</strong><small>Rekap lengkap BL, manifest, TPS, TPP, nomor dan jumlah kontainer/LCL, rincian barang, nilai, dan status per BTD.</small></a>{{end}}
+  </div>
+</section>
+
+{{if .ReportPerformance}}
+<section class="panel performance-report-panel">
+  <header class="report-filter-head"><div><p class="eyebrow">Laporan performa</p><h2>Performa kinerja {{.Performance.PeriodLabel}}</h2><small>Rentang tanggal diterapkan berdasarkan tanggal dokumen penyelesaian setiap tahapan.</small></div><span>{{.Performance.TotalCompleted}} penyelesaian</span></header>
+  <form class="performance-filter-form" method="get" action="/pelaporan">
+    <input type="hidden" name="preset" value="performance">
+    <div><strong>Pilih periode laporan</strong><small>Default satu tahun kalender berjalan. Hasil yang sama digunakan untuk file Excel.</small></div>
+    <label>Dari tanggal<input type="date" name="date_from" value="{{.Performance.DateFromInput}}" required></label>
+    <label>Sampai tanggal<input type="date" name="date_to" value="{{.Performance.DateToInput}}" required></label>
+    <button class="button primary compact" type="submit">Terapkan filter</button>
+  </form>
+  <div class="performance-report-summary">
+    <div class="performance-metric-grid">
+      {{range .Performance.Metrics}}
+      <article class="performance-metric-card"><div><span>{{.Label}}</span><strong>{{.Count}}</strong><small>proses/dokumen selesai</small></div><div class="performance-duration"><span>Waktu rata-rata</span><strong>{{performanceDuration .AverageHours .DurationSamples}}</strong><small>{{.DurationSamples}} durasi valid</small></div><p>{{.Description}}</p></article>
+      {{end}}
+    </div>
+    <aside class="performance-method-note"><strong>Metode penghitungan</strong><p>Satu penyelesaian dihitung berdasarkan nomor dan tanggal dokumen penyelesaian sehingga banyak barang dalam dokumen yang sama tidak menggandakan jumlah proses. Durasi memakai tanggal penetapan awal sebelum konversi BMMN; khusus penilaian PFPD memakai tanggal request penelitian.</p></aside>
+  </div>
+  <footer class="report-filter-actions"><a class="button ghost" href="/pelaporan?preset=performance">Reset ke tahun berjalan</a><a class="button primary" href="{{.Performance.ExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Unduh laporan Excel</a></footer>
+</section>
+<section class="panel table-panel report-results">
+  <div class="table-meta"><p><strong>Rincian dasar pengukuran</strong> · {{len .Performance.Details}} dokumen penyelesaian</p><span><i class="legend-dot green"></i>File Excel berisi sheet Ringkasan dan Rincian.</span></div>
+  <div class="table-scroll-top" data-table-scroll-top aria-label="Geser tabel ke samping"><div></div></div>
+  <div class="table-wrap" data-table-scroll-body><table class="data-table report-table"><thead><tr><th>Kategori</th><th>Dokumen selesai</th><th>Tanggal selesai</th><th>Dokumen awal/request</th><th>Tanggal awal/request</th><th>Durasi</th><th>Jumlah barang</th></tr></thead><tbody>
+    {{range .Performance.Details}}<tr><td><strong>{{.MetricLabel}}</strong></td><td><strong>{{if .CompletionDocument}}{{.CompletionDocument}}{{else}}Tanpa nomor dokumen{{end}}</strong></td><td>{{date .CompletionDate}}</td><td><strong>{{if .StartDocument}}{{.StartDocument}}{{else}}—{{end}}</strong></td><td>{{date .StartDate}}</td><td><strong>{{if .DurationValid}}{{performanceDuration .DurationHours 1}}{{else}}—{{end}}</strong></td><td>{{.InventoryCount}}</td></tr>{{else}}<tr><td colspan="7"><div class="empty-state small"><h3>Belum ada penyelesaian pada periode ini</h3><p>Ubah rentang tanggal atau selesaikan tahapan proses terlebih dahulu.</p></div></td></tr>{{end}}
+  </tbody></table></div>
+</section>
+{{else if .ReportReconciliation}}
+<section class="report-summary">
+  <article><span>Total rekonsiliasi</span><strong>{{.ReportTotal}}</strong><small>catatan sesuai cakupan role</small></article>
+  <article><span>Halaman aktif</span><strong>{{len .Reconciliations}}</strong><small>catatan sedang ditampilkan</small></article>
+  <article><span>Jenis rekonsiliasi</span><strong>2</strong><small>penambahan atau pengeluaran inventory</small></article>
+  <article><span>Format ekspor</span><strong>CSV + Excel</strong><small>hanya data rekonsiliasi fisik</small></article>
+</section>
+<section class="panel table-panel report-results">
+  <div class="table-meta"><p><strong>Rekap rekonsiliasi</strong> · menampilkan {{.Pagination.StartItem}}-{{.Pagination.EndItem}} dari {{.Pagination.TotalItems}} catatan</p><span><i class="legend-dot green"></i>Perubahan data barang tidak dicampurkan ke laporan ini.</span></div>
+  <div class="table-scroll-top" data-table-scroll-top aria-label="Geser tabel ke samping"><div></div></div>
+  <div class="table-pagination">
+    <div class="page-size-picker"><span>Tampilkan</span>{{range .Pagination.Sizes}}<a class="{{if .Selected}}active{{end}}" href="{{.URL}}">{{.Value}}</a>{{end}}<span>catatan</span></div>
+    <div class="page-navigation"><span>Halaman {{.Pagination.Page}} dari {{.Pagination.TotalPages}} · Total {{.Pagination.TotalItems}} item</span>{{if .Pagination.HasPrevious}}<a href="{{.Pagination.PreviousURL}}">Sebelumnya</a>{{else}}<span class="disabled">Sebelumnya</span>{{end}}{{if .Pagination.HasNext}}<a href="{{.Pagination.NextURL}}">Berikutnya</a>{{else}}<span class="disabled">Berikutnya</span>{{end}}</div>
+  </div>
+  <div class="table-wrap" data-table-scroll-body><table class="data-table report-table"><thead><tr><th>Tanggal</th><th>Jenis rekonsiliasi</th><th>Nomor inventory</th><th>Jenis inventory</th><th>Status sebelum</th><th>Status hasil</th><th>Catatan</th><th>Petugas</th></tr></thead><tbody>
+  {{range .Reconciliations}}<tr><td><strong>{{dateTime .CreatedAt}}</strong></td><td>{{if eq .Type "recorded_not_found"}}<span class="report-state closed">Tercatat, tidak ada di lapangan</span><small>Dikeluarkan dari inventory aktif</small>{{else}}<span class="report-state active">Ada di lapangan, belum tercatat</span><small>Ditambahkan ke inventory</small>{{end}}</td><td><strong>{{.InventoryReference}}</strong></td><td><span class="type-pill {{lower .InventoryType}}">{{if eq .InventoryType "TITIPAN"}}Barang Titipan{{else}}{{.InventoryType}}{{end}}</span></td><td><strong>{{if .PreviousStatusLabel}}{{.PreviousStatusLabel}}{{else}}-{{end}}</strong></td><td><strong>{{.ResultStatusLabel}}</strong></td><td class="description-cell"><strong>{{.Notes}}</strong></td><td>{{.Actor}}</td></tr>{{else}}<tr><td colspan="8"><div class="empty-state small"><h3>Belum ada data rekonsiliasi</h3><p>Catatan akan muncul setelah rekonsiliasi kondisi fisik dilakukan.</p></div></td></tr>{{end}}
+  </tbody></table></div>
+</section>
+{{else if .ReportDataCorrection}}
+<section class="report-summary">
+  <article><span>Total rincian</span><strong>{{.ReportTotal}}</strong><small>baris data yang berubah</small></article>
+  <article><span>Total transaksi</span><strong>{{.ReportTransactionTotal}}</strong><small>penyimpanan perubahan data barang</small></article>
+  <article><span>Halaman aktif</span><strong>{{len .DataCorrectionRows}}</strong><small>rincian sedang ditampilkan</small></article>
+  <article><span>Format ekspor</span><strong>CSV + Excel</strong><small>satu baris untuk setiap data yang berubah</small></article>
+</section>
+<section class="panel table-panel report-results">
+  <div class="table-meta"><p><strong>Rekap perubahan data barang</strong> · menampilkan {{.Pagination.StartItem}}-{{.Pagination.EndItem}} dari {{.Pagination.TotalItems}} rincian perubahan</p><span><i class="legend-dot green"></i>CSV dan Excel menggunakan sumber audit dan susunan baris yang sama dengan tabel ini.</span></div>
+  <div class="table-scroll-top" data-table-scroll-top aria-label="Geser tabel ke samping"><div></div></div>
+  <div class="table-pagination">
+    <div class="page-size-picker"><span>Tampilkan</span>{{range .Pagination.Sizes}}<a class="{{if .Selected}}active{{end}}" href="{{.URL}}">{{.Value}}</a>{{end}}<span>baris</span></div>
+    <div class="page-navigation"><span>Halaman {{.Pagination.Page}} dari {{.Pagination.TotalPages}} · Total {{.Pagination.TotalItems}} item</span>{{if .Pagination.HasPrevious}}<a href="{{.Pagination.PreviousURL}}">Sebelumnya</a>{{else}}<span class="disabled">Sebelumnya</span>{{end}}{{if .Pagination.HasNext}}<a href="{{.Pagination.NextURL}}">Berikutnya</a>{{else}}<span class="disabled">Berikutnya</span>{{end}}</div>
+  </div>
+  <div class="table-wrap" data-table-scroll-body><table class="data-table report-table reconciliation-change-table"><thead><tr><th>Tanggal</th><th>Inventory</th><th>Data yang berubah</th><th>Nilai sebelum</th><th>Nilai sesudah</th><th>Alasan dan petugas</th></tr></thead><tbody>
+  {{range .DataCorrectionRows}}{{$record := .Record}}{{if .Legacy}}<tr><td><strong>{{dateTime $record.CreatedAt}}</strong></td><td><strong>{{$record.InventoryReference}}</strong><small>{{$record.InventoryType}}</small></td><td colspan="3"><strong>Rincian perubahan belum tersedia</strong><small>Transaksi dibuat sebelum migration audit nilai diterapkan.</small></td><td><strong>{{if $record.CorrectionReason}}{{$record.CorrectionReason}}{{else}}Alasan belum tersedia{{end}}</strong><small>{{$record.Actor}}</small></td></tr>{{else}}{{$change := .Change}}<tr><td><strong>{{dateTime $record.CreatedAt}}</strong></td><td><strong>{{$record.InventoryReference}}</strong><small>{{$record.InventoryType}}</small></td><td><span class="change-section-pill">{{changeSection $change.Section}}</span><strong>{{changeField $change.Field}}</strong>{{if $change.Context}}<small>{{$change.Context}}</small>{{end}}</td><td class="change-value before"><span>{{changeValue $change.Field $change.Before}}</span></td><td class="change-value after"><span>{{changeValue $change.Field $change.After}}</span></td><td><strong>{{if $record.CorrectionReason}}{{$record.CorrectionReason}}{{else}}Alasan belum tersedia{{end}}</strong><small>{{$record.Actor}}</small></td></tr>{{end}}{{else}}<tr><td colspan="6"><div class="empty-state small"><h3>Belum ada perubahan data barang</h3><p>Data akan muncul setelah perubahan disimpan melalui menu Rekonsiliasi.</p></div></td></tr>{{end}}
+  </tbody></table></div>
+</section>
+{{else if .ReportBTD}}
+<section class="report-summary">
+  <article><span>Total dokumen BTD</span><strong>{{.ReportTotal}}</strong><small>dokumen telah dideduplikasi</small></article>
+  <article><span>Halaman aktif</span><strong>{{len .BTDReportRows}}</strong><small>dokumen sedang ditampilkan</small></article>
+  <article><span>Total nilai barang</span><strong class="money-total">{{rupiah .ReportTotalValue}}</strong><small>akumulasi seluruh uraian BTD</small></article>
+  <article><span>Format ekspor</span><strong>CSV + Excel</strong><small>18 kolom lengkap dan konsisten dengan tabel</small></article>
+</section>
+<section class="panel report-filter-panel">
+  <header class="report-filter-head"><div><p class="eyebrow">Filter Laporan BTD</p><h2>Sesuaikan dokumen BTD yang ditampilkan</h2><small>Filter yang dipilih diterapkan pada tabel, ekspor CSV, dan ekspor Excel.</small></div><span>{{.ReportTotal}} dokumen</span></header>
+  <form method="get" action="/pelaporan">
+    <input type="hidden" name="preset" value="btd">
+    <input type="hidden" name="page_size" value="{{.Pagination.PageSize}}">
+    <div class="report-filter-grid form-grid">
+      <label>Tanggal BTD dari<input type="date" name="date_from" value="{{.Report.DateFrom}}"></label>
+      <label>Tanggal BTD sampai<input type="date" name="date_to" value="{{.Report.DateTo}}"></label>
+      <label>Status inventory<select name="scope"><option value="all" {{if eq .Report.Scope "all"}}selected{{end}}>Semua: aktif dan selesai</option><option value="active" {{if eq .Report.Scope "active"}}selected{{end}}>Aktif saja</option><option value="completed" {{if eq .Report.Scope "completed"}}selected{{end}}>Selesai saja</option></select></label>
+      <label>Status barang<select name="status"><option value="">Semua status barang</option><option value="masih_di_tps" {{if eq .Status "masih_di_tps"}}selected{{end}}>Di TPS</option><option value="ditetapkan" {{if eq .Status "ditetapkan"}}selected{{end}}>Baru dicatat</option><option value="pemberitahuan" {{if eq .Status "pemberitahuan"}}selected{{end}}>Pemberitahuan</option><option value="pemindahan" {{if eq .Status "pemindahan"}}selected{{end}}>Pemindahan</option><option value="pencacahan" {{if eq .Status "pencacahan"}}selected{{end}}>Pencacahan</option><option value="request_penelitian_pfpd" {{if eq .Status "request_penelitian_pfpd"}}selected{{end}}>Request PFPD</option><option value="penelitian_pfpd" {{if eq .Status "penelitian_pfpd"}}selected{{end}}>Penelitian PFPD</option><option value="bmmn_aktif" {{if eq .Status "bmmn_aktif"}}selected{{end}}>BMMN aktif</option><option value="usulan_peruntukan_bmmn" {{if eq .Status "usulan_peruntukan_bmmn"}}selected{{end}}>Usulan peruntukan</option><option value="persetujuan_peruntukan_bmmn" {{if eq .Status "persetujuan_peruntukan_bmmn"}}selected{{end}}>Persetujuan peruntukan</option><option value="kep_lelang" {{if eq .Status "kep_lelang"}}selected{{end}}>KEP Lelang</option><option value="kep_htl" {{if eq .Status "kep_htl"}}selected{{end}}>KEP HTL</option><option value="jadwal_lelang" {{if eq .Status "jadwal_lelang"}}selected{{end}}>Jadwal lelang</option><option value="laku" {{if eq .Status "laku"}}selected{{end}}>Lelang laku</option><option value="tidak_laku" {{if eq .Status "tidak_laku"}}selected{{end}}>Lelang tidak laku</option><option value="alokasi_hasil_lelang" {{if eq .Status "alokasi_hasil_lelang"}}selected{{end}}>Alokasi hasil lelang</option><option value="kep_musnah" {{if eq .Status "kep_musnah"}}selected{{end}}>KEP Musnah</option><option value="ba_musnah" {{if eq .Status "ba_musnah"}}selected{{end}}>BA Musnah</option><option value="ba_serah_terima" {{if eq .Status "ba_serah_terima"}}selected{{end}}>BA Serah Terima</option><option value="pengeluaran_barang" {{if eq .Status "pengeluaran_barang"}}selected{{end}}>Pengeluaran selesai</option></select></label>
+      <label>Lokasi barang<select name="location"><option value="">Semua lokasi</option><option value="tps" {{if eq .Report.Location "tps"}}selected{{end}}>Masih di TPS</option><option value="tpp" {{if eq .Report.Location "tpp"}}selected{{end}}>Sudah di TPP</option></select></label>
+      <label>TPP<select name="tpp"><option value="">Semua TPP</option>{{range .Facilities}}<option value="{{.ID}}" {{if eq $.FacilityID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+    </div>
+    <footer class="report-filter-actions"><a class="button ghost" href="/pelaporan?preset=btd">Reset filter BTD</a><a class="button secondary" href="{{.Report.CSVExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Ekspor CSV</a><a class="button secondary" href="{{.Report.ExcelExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Ekspor Excel</a><button class="button primary" type="submit">Terapkan filter</button></footer>
+  </form>
+</section>
+<section class="panel table-panel report-results">
+  <div class="table-meta"><p><strong>Laporan BTD</strong> · menampilkan {{.Pagination.StartItem}}–{{.Pagination.EndItem}} dari {{.Pagination.TotalItems}} dokumen</p><span><i class="legend-dot green"></i>Semua rincian pada nomor BTD yang sama digabungkan dalam satu baris dokumen dan tetap dideduplikasi.</span></div>
+  <div class="table-scroll-top" data-table-scroll-top aria-label="Geser tabel ke samping"><div></div></div>
+  <div class="table-pagination">
+    <div class="page-size-picker"><span>Tampilkan</span>{{range .Pagination.Sizes}}<a class="{{if .Selected}}active{{end}}" href="{{.URL}}">{{.Value}}</a>{{end}}<span>dokumen</span></div>
+    <div class="page-navigation"><span>Halaman {{.Pagination.Page}} dari {{.Pagination.TotalPages}} · Total {{.Pagination.TotalItems}} item</span>{{if .Pagination.HasPrevious}}<a href="{{.Pagination.PreviousURL}}">Sebelumnya</a>{{else}}<span class="disabled">Sebelumnya</span>{{end}}{{if .Pagination.HasNext}}<a href="{{.Pagination.NextURL}}">Berikutnya</a>{{else}}<span class="disabled">Berikutnya</span>{{end}}</div>
+  </div>
+  <div class="table-wrap" data-table-scroll-body><table class="data-table report-table btd-report-table"><thead><tr><th>Nomor BTD</th><th>Tanggal BTD</th><th>Nomor BL</th><th>Tanggal BL</th><th>Nomor manifest</th><th>Tanggal manifest</th><th>Pos manifest</th><th>Jenis muatan</th><th>TPS asal</th><th>TPP</th><th>Status lokasi</th><th>Kontainer / LCL</th><th>Jumlah kontainer</th><th>Uraian, jenis, kondisi, dan jumlah barang</th><th>Jumlah rincian</th><th>Total nilai barang</th><th>Pemilik / shipper / consignee</th><th>Status barang</th><th>Status inventory</th></tr></thead><tbody>
+    {{range .BTDReportRows}}<tr><td><strong>{{.DeterminationNo}}</strong></td><td><strong>{{date .DeterminationDate}}</strong></td><td><strong>{{.BLNo}}</strong></td><td><strong>{{.BLDate}}</strong></td><td><strong>{{.ManifestNo}}</strong></td><td>{{.ManifestDate}}</td><td>{{.ManifestPosition}}</td><td><span class="status-pill">{{.LoadType}}</span></td><td class="description-cell"><strong>{{.OriginWarehouse}}</strong></td><td class="description-cell"><strong>{{.FacilityName}}</strong></td><td>{{.LocationStatus}}</td><td class="description-cell"><strong>{{.ContainerSummary}}</strong></td><td><strong>{{.ContainerCount}}</strong></td><td class="description-cell"><strong>{{.GoodsSummary}}</strong></td><td><strong>{{.ItemCount}}</strong></td><td><strong>{{rupiah .TotalValue}}</strong></td><td class="description-cell">{{.OwnerName}}</td><td>{{.StatusLabel}}</td><td><span class="status-pill">{{.InventoryStatus}}</span></td></tr>{{else}}<tr><td colspan="19"><div class="empty-state small"><h3>Belum ada data BTD</h3><p>Data akan muncul setelah pencatatan BTD disimpan.</p></div></td></tr>{{end}}
+  </tbody></table></div>
+</section>
+
+{{else}}
+<section class="report-summary">
+  <article><span>Total data</span><strong>{{.ReportTotal}}</strong><small>baris sesuai filter</small></article>
+  <article><span>Inventory aktif</span><strong>{{.ReportActive}}</strong><small>masih dalam pengawasan</small></article>
+  <article><span>Telah selesai</span><strong>{{.ReportClosed}}</strong><small>keluar dari inventory aktif</small></article>
+  <article><span>Total nilai barang</span><strong class="money-total">{{rupiah .ReportTotalValue}}</strong><small>{{.ReportAtTPP}} barang berada di TPP</small></article>
+</section>
+
+<section class="panel report-filter-panel">
+  <header class="report-filter-head"><div><p class="eyebrow">Pembuat laporan</p><h2>Sesuaikan isi laporan</h2><small>Semua kombinasi filter di bawah ikut diterapkan pada file CSV dan Excel.</small></div><span>{{.ReportTotal}} hasil</span></header>
+  <form method="get" action="/pelaporan">
+    {{if .Report.Preset}}<input type="hidden" name="preset" value="{{.Report.Preset}}">{{end}}
+    <input type="hidden" name="page_size" value="{{.Pagination.PageSize}}">
+    <div class="report-filter-grid form-grid">
+      <label class="span-2">Pencarian<input type="search" name="q" value="{{.Query}}" placeholder="Nomor penetapan, kontainer, uraian, atau pemilik"></label>
+      <label>Status inventory<select name="scope"><option value="active" {{if eq .Report.Scope "active"}}selected{{end}}>Aktif saja</option><option value="all" {{if eq .Report.Scope "all"}}selected{{end}}>Semua status (aktif dan selesai)</option><option value="completed" {{if eq .Report.Scope "completed"}}selected{{end}}>Selesai saja</option></select></label>
+      <label>TPP<select name="tpp"><option value="">Semua TPP</option>{{range .Facilities}}<option value="{{.ID}}" {{if eq $.FacilityID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+      <label>Tanggal dokumen dari<input type="date" name="date_from" value="{{.Report.DateFrom}}"></label>
+      <label>Tanggal dokumen sampai<input type="date" name="date_to" value="{{.Report.DateTo}}"></label>
+      <label>Jenis inventory<select name="type"><option value="">Semua jenis</option>{{if can .User "inventory.type.btd"}}<option value="btd" {{if eq .InventoryType "BTD"}}selected{{end}}>BTD</option>{{end}}{{if can .User "inventory.type.bdn"}}<option value="bdn" {{if eq .InventoryType "BDN"}}selected{{end}}>BDN</option>{{end}}{{if can .User "inventory.type.bmmn"}}<option value="bmmn" {{if eq .InventoryType "BMMN"}}selected{{end}}>BMMN</option>{{end}}{{if can .User "inventory.type.titipan"}}<option value="titipan" {{if eq .InventoryType "TITIPAN"}}selected{{end}}>Barang Titipan</option>{{end}}</select></label>
+      <label>Jenis barang<select name="item_kind"><option value="">Semua jenis barang</option>{{range .ItemKindNames}}<option value="{{.}}" {{if eq $.Report.ItemKind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label>Kondisi barang<select name="goods_condition"><option value="">Semua kondisi</option>{{range .GoodsConditionNames}}<option value="{{.}}" {{if eq $.Report.GoodsCondition .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label>Kategori BDN<select name="category"><option value="">Semua kategori BDN</option>{{range .BDNCategoryNames}}<option value="{{.}}" {{if eq $.Report.Category .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label>Peruntukan BMMN<select name="allocation_purpose"><option value="">Semua peruntukan</option>{{range .AllocationPurposeNames}}<option value="{{.}}" {{if eq $.Report.AllocationPurpose .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label>Status barang<select name="status"><option value="">Semua status barang</option><option value="masih_di_tps" {{if eq .Status "masih_di_tps"}}selected{{end}}>Di TPS</option><option value="ditetapkan" {{if eq .Status "ditetapkan"}}selected{{end}}>Baru ditetapkan</option><option value="pemberitahuan" {{if eq .Status "pemberitahuan"}}selected{{end}}>Pemberitahuan</option><option value="pemindahan" {{if eq .Status "pemindahan"}}selected{{end}}>Pemindahan</option><option value="pencacahan" {{if eq .Status "pencacahan"}}selected{{end}}>Pencacahan</option><option value="request_penelitian_pfpd" {{if eq .Status "request_penelitian_pfpd"}}selected{{end}}>Request PFPD</option><option value="penelitian_pfpd" {{if eq .Status "penelitian_pfpd"}}selected{{end}}>Penelitian PFPD</option><option value="bmmn_aktif" {{if eq .Status "bmmn_aktif"}}selected{{end}}>BMMN aktif</option><option value="usulan_peruntukan_bmmn" {{if eq .Status "usulan_peruntukan_bmmn"}}selected{{end}}>Usulan peruntukan</option><option value="persetujuan_peruntukan_bmmn" {{if eq .Status "persetujuan_peruntukan_bmmn"}}selected{{end}}>Persetujuan peruntukan</option><option value="kep_lelang" {{if eq .Status "kep_lelang"}}selected{{end}}>KEP Lelang</option><option value="kep_htl" {{if eq .Status "kep_htl"}}selected{{end}}>KEP HTL</option><option value="jadwal_lelang" {{if eq .Status "jadwal_lelang"}}selected{{end}}>Jadwal lelang</option><option value="laku" {{if eq .Status "laku"}}selected{{end}}>Lelang laku</option><option value="tidak_laku" {{if eq .Status "tidak_laku"}}selected{{end}}>Lelang tidak laku</option><option value="alokasi_hasil_lelang" {{if eq .Status "alokasi_hasil_lelang"}}selected{{end}}>Alokasi hasil lelang</option><option value="kep_musnah" {{if eq .Status "kep_musnah"}}selected{{end}}>KEP Musnah</option><option value="ba_musnah" {{if eq .Status "ba_musnah"}}selected{{end}}>BA Musnah</option><option value="ba_serah_terima" {{if eq .Status "ba_serah_terima"}}selected{{end}}>BA Serah Terima</option><option value="pengeluaran_barang" {{if eq .Status "pengeluaran_barang"}}selected{{end}}>Pengeluaran selesai</option></select></label>
+      <label>Lokasi barang<select name="location"><option value="">Semua lokasi</option><option value="tpp" {{if eq .Report.Location "tpp"}}selected{{end}}>Di TPP</option><option value="tps" {{if eq .Report.Location "tps"}}selected{{end}}>Di TPS</option></select></label>
+      <label>Umur minimum (hari)<input type="number" min="0" name="min_age" value="{{.Report.MinAge}}" placeholder="Contoh: 60"></label>
+      <label>Nilai minimum<input inputmode="numeric" name="min_value" value="{{.Report.MinValue}}" placeholder="Contoh: 100000000"></label>
+      <label>Nilai maksimum<input inputmode="numeric" name="max_value" value="{{.Report.MaxValue}}" placeholder="Tanpa batas maksimum"></label>
+    </div>
+    <footer class="report-filter-actions"><a class="button ghost" href="/pelaporan">Reset semua</a><a class="button secondary" href="{{.Report.CSVExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Ekspor laporan CSV</a><a class="button secondary" href="{{.Report.ExcelExportURL}}"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Ekspor laporan Excel</a><button class="button primary" type="submit">Terapkan filter laporan</button></footer>
+  </form>
+</section>
+
+<section class="panel table-panel report-results">
+  <div class="table-meta"><p><strong>{{.Report.Title}}</strong> · menampilkan {{.Pagination.StartItem}}–{{.Pagination.EndItem}} dari {{.Pagination.TotalItems}} baris</p><span><i class="legend-dot green"></i>CSV dan Excel mengikuti seluruh filter laporan, tidak hanya halaman aktif</span></div>
+  <div class="table-scroll-top" data-table-scroll-top aria-label="Geser tabel ke samping"><div></div></div>
+  <div class="table-pagination">
+    <div class="page-size-picker"><span>Tampilkan</span>{{range .Pagination.Sizes}}<a class="{{if .Selected}}active{{end}}" href="{{.URL}}">{{.Value}}</a>{{end}}<span>baris</span></div>
+    <div class="page-navigation"><span>Halaman {{.Pagination.Page}} dari {{.Pagination.TotalPages}} · Total {{.Pagination.TotalItems}} item</span>{{if .Pagination.HasPrevious}}<a href="{{.Pagination.PreviousURL}}">Sebelumnya</a>{{else}}<span class="disabled">Sebelumnya</span>{{end}}{{if .Pagination.HasNext}}<a href="{{.Pagination.NextURL}}">Berikutnya</a>{{else}}<span class="disabled">Berikutnya</span>{{end}}</div>
+  </div>
+  <div class="table-wrap" data-table-scroll-body>
+    <table class="data-table report-table"><thead><tr><th>Nomor penetapan</th><th>Jenis / kategori</th><th>Tanggal / umur</th><th>Kontainer</th><th>Uraian / jenis barang</th><th>Jumlah</th><th>Nilai barang</th><th>Lokasi</th><th>Status</th></tr></thead><tbody>
+    {{range .Items}}<tr><td><strong>{{.DeterminationNo}}</strong><small>Asal {{.OriginType}}</small></td><td><span class="type-pill {{lower .Type}}">{{if eq .Type "TITIPAN"}}Barang Titipan{{else}}{{.Type}}{{end}}</span><small>{{if eq .Type "TITIPAN"}}{{.EntrustedCategory}}{{if .SourceOffice}} · {{.SourceOffice}}{{end}}{{else if .Category}}{{.Category}}{{else}}—{{end}}</small></td><td><strong>{{date .DeterminationDate}}</strong><small>{{age . $.Now}} hari</small></td><td><strong>{{if .ContainerNo}}{{.ContainerNo}} · {{.ContainerSize}}'{{else}}LCL · {{number .EstimatedVolumeM3}} m³{{end}}</strong><small>{{.ManifestNo}}</small></td><td class="description-cell"><strong>{{.Description}}</strong><small>{{.ItemKind}}{{if .GoodsCondition}} · Kondisi {{.GoodsCondition}}{{end}} · {{.OwnerName}}</small></td><td><strong>{{number .Quantity}}</strong><small>{{.Unit}}</small></td><td><strong>{{rupiah .GoodsValue}}</strong></td><td><strong>{{.LocationStatus}}</strong><small>{{if .AtTPP}}{{.FacilityName}}{{else}}{{.OriginWarehouse}}{{end}}</small></td><td>{{if .IsActive}}<span class="report-state active">Aktif</span>{{else}}<span class="report-state closed">Selesai</span>{{end}}<small>{{.StatusLabel}}</small></td></tr>{{else}}<tr><td colspan="9"><div class="empty-state small"><h3>Tidak ada data yang sesuai</h3><p>Ubah rentang tanggal atau kombinasi filter laporan.</p></div></td></tr>{{end}}
+    </tbody></table>
+  </div>
+</section>
+{{end}}
+{{end}}

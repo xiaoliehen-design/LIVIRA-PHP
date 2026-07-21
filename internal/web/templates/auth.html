@@ -1,0 +1,110 @@
+{{define "content"}}
+<main class="auth-layout auth-layout-modern">
+  <section class="auth-showcase">
+    <div class="auth-ambient-grid" aria-hidden="true"></div>
+    <div class="auth-brand">
+      <span class="brand-mark large"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5v15L16 29 6 23.5z"/><path d="M16 3v26M6 8.5l10 5.4 10-5.4M6 23.5l10-5.3 10 5.3"/></svg></span>
+      <span><strong>LIVIRA</strong><small>Layanan Inventori, Verifikasi, Integrasi, Rekonsiliasi, dan Analitik</small></span>
+    </div>
+
+    <div class="auth-message">
+      <span class="auth-kicker"><i></i>Platform pengelolaan barang TPP</span>
+      <h1>Pengelolaan barang yang lebih tertib, cepat, dan terukur.</h1>
+      <p>LIVIRA menyatukan proses BTD, BDN, BMMN, barang titipan, lelang, pemusnahan, hibah, PSP, dan pelaporan dalam satu alur kerja yang mudah dipantau.</p>
+      <div class="auth-capability-grid">
+        <article><span class="auth-capability-icon"><svg viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></span><div><strong>Inventory terpusat</strong><small>Data barang dan lokasi dalam satu tampilan.</small></div></article>
+        <article><span class="auth-capability-icon"><svg viewBox="0 0 24 24"><path d="M5 4v4M19 4v4M3 9h18M5 6h14a2 2 0 0 1 2 2v12H3V8a2 2 0 0 1 2-2Z"/><path d="m8 14 2 2 5-5"/></svg></span><div><strong>Proses terstruktur</strong><small>Setiap tahap dilengkapi dokumen dan status.</small></div></article>
+        <article><span class="auth-capability-icon"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19V2M2 19h22"/></svg></span><div><strong>Kinerja terukur</strong><small>Performa dan jejak audit siap ditinjau.</small></div></article>
+      </div>
+    </div>
+
+    <div class="auth-office">
+      <span><strong>KPU Bea dan Cukai Tipe A Tanjung Priok</strong><small>Portal internal pengelolaan barang TPP</small></span>
+      <span class="auth-system-label"><i></i>Akses terkontrol</span>
+    </div>
+  </section>
+
+  <section class="auth-form-side">
+    <div class="auth-form-shell">
+      <div class="auth-side-label"><span><i></i>Portal internal</span><small>Gunakan akun yang telah terdaftar</small></div>
+      <div class="auth-card">
+        <div class="auth-card-topline"><span>Akses LIVIRA</span><span>TPP Tanjung Priok</span></div>
+        {{if .OTPPage}}
+          <div class="auth-card-head"><span class="mini-logo"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5v15L16 29 6 23.5z"/><path d="M16 3v26M6 8.5l10 5.4 10-5.4M6 23.5l10-5.3 10 5.3"/></svg></span><p class="auth-card-eyebrow">Verifikasi email</p><h2>Konfirmasi kode OTP</h2><p>Masukkan kode 6 digit yang dikirim ke email Anda. Setelah terverifikasi, akun akan menunggu persetujuan administrator.</p></div>
+          {{if .Success}}<div class="auth-alert success">{{.Success}}</div>{{end}}
+          {{if .Error}}<div class="auth-alert error">{{.Error}}</div>{{end}}
+          {{if .DemoMode}}<div class="auth-alert info">Pengiriman OTP email aktif setelah Supabase dikonfigurasi.</div>{{end}}
+          <form class="auth-form" method="post" action="/signup/verify">
+            <label>Email <em>*</em><input type="email" name="email" value="{{.VerifyEmail}}" autocomplete="email" placeholder="nama@kemenkeu.go.id" required></label>
+            <label>Kode OTP <em>*</em><input class="otp-input" type="text" name="token" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus></label>
+            <button class="button primary button-block" type="submit">Verifikasi OTP</button>
+          </form>
+	          <form class="auth-resend-form" method="post" action="/signup/resend">
+	            <input type="hidden" name="email" value="{{.VerifyEmail}}">
+	            <button type="submit">Kirim ulang OTP</button>
+	          </form>
+	          <p class="auth-switch"><a href="/signup">Ubah data pendaftaran</a><span></span><a href="/login">Kembali ke login</a></p>
+	        {{else if .ForgotPasswordPage}}
+	          <div class="auth-card-head"><span class="mini-logo"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5v15L16 29 6 23.5z"/><path d="M16 3v26M6 8.5l10 5.4 10-5.4M6 23.5l10-5.3 10 5.3"/></svg></span><p class="auth-card-eyebrow">Pemulihan akun</p><h2>Lupa password</h2><p>Masukkan email yang digunakan saat mendaftar. LIVIRA akan mengirim OTP 6 digit untuk memverifikasi perubahan password.</p></div>
+	          {{if .Success}}<div class="auth-alert success">{{.Success}}</div>{{end}}
+	          {{if .Error}}<div class="auth-alert error">{{.Error}}</div>{{end}}
+	          {{if .DemoMode}}<div class="auth-alert info">Pengiriman OTP reset password aktif setelah Supabase dikonfigurasi.</div>{{end}}
+	          <form class="auth-form" method="post" action="/forgot-password">
+	            <label>Email terdaftar <em>*</em><input type="email" name="email" value="{{.VerifyEmail}}" autocomplete="email" placeholder="nama@kemenkeu.go.id" required autofocus></label>
+	            <button class="button primary button-block" type="submit">Kirim OTP reset password</button>
+	          </form>
+	          <p class="auth-switch"><a href="/login">Kembali ke login</a><span></span><a href="/forgot-password/verify{{if .VerifyEmail}}?email={{urlquery .VerifyEmail}}{{end}}">Sudah memiliki OTP</a></p>
+	        {{else if .ResetPasswordPage}}
+	          <div class="auth-card-head"><span class="mini-logo"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5v15L16 29 6 23.5z"/><path d="M16 3v26M6 8.5l10 5.4 10-5.4M6 23.5l10-5.3 10 5.3"/></svg></span><p class="auth-card-eyebrow">Verifikasi pemulihan</p><h2>Buat password baru</h2><p>Masukkan OTP dari email terdaftar, kemudian tentukan password baru untuk akun LIVIRA.</p></div>
+	          {{if .Success}}<div class="auth-alert success">{{.Success}}</div>{{end}}
+	          {{if .Error}}<div class="auth-alert error">{{.Error}}</div>{{end}}
+	          {{if .DemoMode}}<div class="auth-alert info">Verifikasi OTP reset password aktif setelah Supabase dikonfigurasi.</div>{{end}}
+	          <form class="auth-form" method="post" action="/forgot-password/verify">
+	            <label>Email terdaftar <em>*</em><input type="email" name="email" value="{{.VerifyEmail}}" autocomplete="email" placeholder="nama@kemenkeu.go.id" required></label>
+	            <label>Kode OTP <em>*</em><input class="otp-input" type="text" name="token" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus></label>
+	            <label><span class="label-title">Password baru <em>*</em></span><span class="label-hint">Minimal 8 karakter</span><input type="password" name="password" minlength="8" autocomplete="new-password" placeholder="Masukkan password baru" required></label>
+	            <label>Konfirmasi password baru <em>*</em><input type="password" name="password_confirmation" minlength="8" autocomplete="new-password" placeholder="Ulangi password baru" required></label>
+	            <button class="button primary button-block" type="submit">Verifikasi OTP dan ubah password</button>
+	          </form>
+	          <form class="auth-resend-form" method="post" action="/forgot-password">
+	            <input type="hidden" name="email" value="{{.VerifyEmail}}">
+	            <button type="submit">Kirim ulang OTP reset password</button>
+	          </form>
+	          <p class="auth-switch"><a href="/forgot-password">Ubah email</a><span></span><a href="/login">Kembali ke login</a></p>
+	        {{else if .SignupPage}}
+          <div class="auth-card-head"><span class="mini-logo"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5v15L16 29 6 23.5z"/><path d="M16 3v26M6 8.5l10 5.4 10-5.4M6 23.5l10-5.3 10 5.3"/></svg></span><p class="auth-card-eyebrow">Pendaftaran akun</p><h2>Buat akun petugas</h2><p>Gunakan email aktif untuk menerima kode OTP 6 digit dan melanjutkan proses persetujuan akun.</p></div>
+          {{if .Error}}<div class="auth-alert error">{{.Error}}</div>{{end}}
+          {{if .DemoMode}}<div class="auth-alert info">Pendaftaran email aktif setelah konfigurasi Supabase dipasang.</div>{{end}}
+          <form class="auth-form" method="post" action="/signup">
+            <label>Nama lengkap <em>*</em><input type="text" name="name" autocomplete="name" placeholder="Nama petugas" required></label>
+            <label>Email <em>*</em><input type="email" name="email" autocomplete="email" placeholder="nama@kemenkeu.go.id" required></label>
+            <label><span class="label-title">Password <em>*</em></span><span class="label-hint">Minimal 8 karakter</span><input type="password" name="password" minlength="8" autocomplete="new-password" placeholder="Buat password yang kuat" required></label>
+            <button class="button primary button-block" type="submit">Daftar dan kirim OTP</button>
+          </form>
+          <p class="auth-switch">Sudah memiliki akun? <a href="/login">Masuk di sini</a></p>
+        {{else}}
+          <div class="auth-card-head"><span class="mini-logo"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5v15L16 29 6 23.5z"/><path d="M16 3v26M6 8.5l10 5.4 10-5.4M6 23.5l10-5.3 10 5.3"/></svg></span><p class="auth-card-eyebrow">Selamat datang</p><h2>Masuk ke LIVIRA</h2><p>Akses dashboard untuk mengelola inventory, proses penyelesaian, dan pelaporan barang TPP.</p></div>
+          {{if .Success}}<div class="auth-alert success">{{.Success}}</div>{{end}}
+	          {{if .Error}}<div class="auth-alert error">{{.Error}}</div>{{end}}
+	          <form class="auth-form" method="post" action="/login">
+	            <label>Username atau email <em>*</em><input type="text" name="identity" autocomplete="username" placeholder="Masukkan username atau email" required autofocus></label>
+	            <label><span class="label-title">Password <em>*</em></span><a class="auth-forgot-link" href="/forgot-password">Lupa password?</a><input type="password" name="password" autocomplete="current-password" placeholder="Masukkan password" required></label>
+	            <fieldset class="auth-captcha" data-captcha-box>
+	              <legend>Verifikasi CAPTCHA <em>*</em></legend>
+	              <div class="auth-captcha-challenge">
+	                <img data-captcha-image src="/captcha.png?token={{.CaptchaToken}}" width="220" height="68" alt="Kode CAPTCHA. Gunakan tombol kode baru jika sulit dibaca.">
+	                <button type="button" data-refresh-captcha aria-label="Tampilkan kode CAPTCHA baru"><svg viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18.2 9A7 7 0 0 0 6.6 6.6L4 9M5.8 15A7 7 0 0 0 17.4 17.4L20 15"/></svg><span>Kode baru</span></button>
+	              </div>
+	              <input type="hidden" name="captcha_token" value="{{.CaptchaToken}}" data-captcha-token>
+	              <label>Ketik kode pada gambar<input type="text" name="captcha_answer" maxlength="5" minlength="5" pattern="[A-Za-z0-9]{5}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="5 karakter" data-captcha-answer required></label>
+	            </fieldset>
+	            <button class="button primary button-block" type="submit">Masuk ke dashboard</button>
+	          </form>
+          <p class="auth-switch">Belum memiliki akun? <a href="/signup">Daftar dengan email</a></p>
+        {{end}}
+      </div>
+      <p class="auth-security"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5z"/></svg><span>Koneksi dan sesi dilindungi. Jangan bagikan kredensial Anda.</span></p>
+    </div>
+  </section>
+</main>
+{{end}}

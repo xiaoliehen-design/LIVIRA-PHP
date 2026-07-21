@@ -1,0 +1,209 @@
+{{define "content"}}
+<section class="page-intro admin-intro">
+  <div><p>{{.Subtitle}}</p></div>
+  <div class="admin-tabs" aria-label="Menu administrasi">
+    {{if can .User "admin.users"}}<a class="{{if eq .AdminSection "users"}}active{{end}}" href="/admin/pendaftaran">Pendaftaran</a>{{end}}
+    {{if can .User "admin.roles"}}<a class="{{if eq .AdminSection "roles"}}active{{end}}" href="/admin/roles">Role & akses</a>{{end}}
+    {{if can .User "admin.parameters"}}<a class="{{if eq .AdminSection "parameters"}}active{{end}}" href="/admin/parameters">Parameter</a>{{end}}
+  </div>
+</section>
+
+{{if eq .AdminSection "users"}}
+<section class="admin-summary-grid">
+  <article><span>Menunggu keputusan</span><strong>{{.PendingUsers}}</strong><small>seluruh pendaftaran pending</small></article>
+  <article><span>Siap disetujui</span><strong>{{.VerifiedPendingUsers}}</strong><small>OTP email sudah terkonfirmasi</small></article>
+  <article><span>Role aktif</span><strong>{{len .Roles}}</strong><small>tersedia untuk penetapan</small></article>
+</section>
+
+<section class="panel table-panel admin-panel">
+  <header class="panel-header"><div><h2>Daftar pendaftaran pengguna</h2><p>Urutan terbaru. Akun hanya dapat masuk setelah OTP email terverifikasi dan admin menetapkan role.</p></div></header>
+  <div class="table-wrap">
+    <table class="data-table admin-user-table">
+      <thead><tr><th>Pendaftar</th><th>Konfirmasi email</th><th>Status persetujuan</th><th>Role saat ini</th><th>Tindakan admin</th></tr></thead>
+      <tbody>
+      {{range .Users}}{{$registeredUser := .}}
+        <tr>
+          <td><strong>{{.Name}}</strong><small>{{.Email}}</small><small>Daftar {{dateTime .CreatedAt}}</small></td>
+          <td>
+            {{if .EmailVerified}}<span class="admin-badge success">OTP terverifikasi</span><small>{{dateTime .EmailVerifiedAt}}</small>
+            {{else}}<span class="admin-badge warning">Belum verifikasi OTP</span><small>Belum dapat disetujui</small>{{end}}
+          </td>
+          <td>
+            {{if eq .ApprovalStatus "approved"}}<span class="admin-badge success">Disetujui</span><small>{{dateTime .ApprovedAt}} · {{.ApprovedBy}}</small>
+            {{else if eq .ApprovalStatus "rejected"}}<span class="admin-badge danger">Ditolak</span><small>{{.RejectionReason}}</small>
+            {{else}}<span class="admin-badge warning">Menunggu admin</span><small>Belum memiliki akses aplikasi</small>{{end}}
+          </td>
+          <td><strong>{{if .RoleName}}{{.RoleName}}{{else}}Belum ditetapkan{{end}}</strong>{{if .RoleID}}<small>ID role tersimpan</small>{{else}}<small>Pilih role saat persetujuan</small>{{end}}</td>
+          <td class="admin-actions-cell">
+            {{if eq .ApprovalStatus "pending"}}
+              <form class="admin-inline-form" method="post" action="/admin/pendaftaran/{{.ID}}/approve">
+                <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+                <select name="role_id" required {{if not .EmailVerified}}disabled{{end}}>
+                  <option value="">Pilih role</option>
+                  {{range $.Roles}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+                </select>
+                <button class="button primary compact" type="submit" {{if not .EmailVerified}}disabled{{end}}>Setujui</button>
+              </form>
+              <form class="admin-inline-form reject" method="post" action="/admin/pendaftaran/{{.ID}}/reject">
+                <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+                <input name="reason" maxlength="300" placeholder="Alasan penolakan" required>
+                <button class="button ghost compact" type="submit">Tolak</button>
+              </form>
+            {{else if eq .ApprovalStatus "approved"}}
+              <form class="admin-inline-form role-edit-form" method="post" action="/admin/pendaftaran/{{.ID}}/role">
+                <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+                <select name="role_id" required aria-label="Role baru untuk {{.Name}}">
+                  {{range $.Roles}}<option value="{{.ID}}" {{if eq .ID $registeredUser.RoleID}}selected{{end}}>{{.Name}}</option>{{end}}
+                </select>
+                <button class="button secondary compact" type="submit">Simpan role</button>
+              </form>
+              <small class="admin-muted">Perubahan role berlaku pada login berikutnya.</small>
+	            {{else}}
+	              <small class="admin-muted">Pendaftaran ditolak. Role hanya dapat diubah untuk pengguna yang telah disetujui.</small>
+	            {{end}}
+	            <form class="admin-delete-user-form" method="post" action="/admin/pendaftaran/{{.ID}}/delete" data-delete-user-form data-user-name="{{.Name}}" data-user-email="{{.Email}}">
+	              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+	              <button class="button danger compact" type="submit"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></svg>Hapus user</button>
+	            </form>
+	            <small class="admin-delete-note">Menghapus akun login dan data pendaftarannya secara permanen.</small>
+	          </td>
+        </tr>
+      {{else}}
+        <tr><td colspan="5"><div class="empty-state small"><h3>Belum ada pendaftaran</h3><p>Pendaftar baru akan muncul setelah menyelesaikan formulir sign-up.</p></div></td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
+
+{{if eq .AdminSection "roles"}}
+<section class="admin-two-column">
+  <article class="panel admin-form-panel">
+    <header class="panel-header"><div><h2>Buat role baru</h2><p>Nama role bebas dan akses dapat dikombinasikan sesuai kebutuhan unit.</p></div></header>
+    <form class="admin-form" method="post" action="/admin/roles">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <div class="form-grid cols-2">
+        <label>Nama role <em>*</em><input name="name" maxlength="80" placeholder="Contoh: Petugas Lelang BMMN" required></label>
+        <label>Deskripsi<input name="description" maxlength="240" placeholder="Jelaskan cakupan tugas role"></label>
+      </div>
+      <div class="permission-grid">
+        {{range .PermissionDefinitions}}
+          <label class="permission-option"><input type="checkbox" name="permissions" value="{{.Code}}"><span><strong>{{.Label}}</strong><small>{{.Group}} · {{.Description}}</small></span></label>
+        {{end}}
+      </div>
+      <p class="field-help">Hak input awal dan setiap action inventory sekarang berdiri sendiri. Pilih hanya fungsi yang benar-benar diperlukan; hak lihat inventory dan cakupan barang terkait akan ditambahkan otomatis saat role disimpan.</p>
+      <button class="button primary" type="submit">Simpan role baru</button>
+    </form>
+  </article>
+
+  <aside class="admin-guidance">
+    <h3>Contoh konfigurasi</h3>
+    <article><strong>Lelang saja</strong><p>Pilih Lihat Lelang, Kelola Lelang, Pencarian Detail, dan cakupan barang yang diperlukan.</p></article>
+    <article><strong>Petugas BMMN</strong><p>Pilih Akses BMMN, lalu tentukan action yang boleh dijalankan, misalnya usulan, persetujuan peruntukan, atau pengeluaran barang.</p></article>
+    <article><strong>Petugas bongkar/muat</strong><p>Pilih Action bongkar/muat kontainer dan cakupan barang yang diperlukan tanpa memberikan action inventory lainnya.</p></article>
+  </aside>
+</section>
+
+<section class="admin-role-list">
+  {{range .Roles}}{{$role := .}}
+  <article class="panel role-card {{if not .Active}}inactive{{end}}">
+    <header><div><span class="admin-badge {{if .Active}}success{{else}}neutral{{end}}">{{if .Active}}Aktif{{else}}Nonaktif{{end}}</span>{{if .System}}<span class="admin-badge neutral">Role awal</span>{{end}}<span class="admin-badge {{if gt .AssignedUsers 0}}warning{{else}}neutral{{end}}">{{.AssignedUsers}} pengguna</span></div><small>Diperbarui {{dateTime .UpdatedAt}}</small></header>
+    <form method="post" action="/admin/roles/{{.ID}}/update">
+      <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+      <div class="form-grid cols-2">
+        <label>Nama role<input name="name" value="{{.Name}}" maxlength="80" required></label>
+        <label>Deskripsi<input name="description" value="{{.Description}}" maxlength="240"></label>
+      </div>
+      <div class="permission-grid compact-grid">
+        {{range $.PermissionDefinitions}}
+          <label class="permission-option"><input type="checkbox" name="permissions" value="{{.Code}}" {{if hasPermission $role.Permissions .Code}}checked{{end}}><span><strong>{{.Label}}</strong><small>{{.Group}}</small></span></label>
+        {{end}}
+      </div>
+      <div class="role-card-actions"><button class="button secondary compact" type="submit">Simpan perubahan</button></div>
+    </form>
+    <div class="role-management-actions">
+      <form method="post" action="/admin/roles/{{.ID}}/status" class="role-status-form">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="active" value="{{if .Active}}false{{else}}true{{end}}">
+        <button class="button ghost compact" type="submit">{{if .Active}}Nonaktifkan role{{else}}Aktifkan kembali{{end}}</button>
+      </form>
+      {{if eq .AssignedUsers 0}}
+      <form method="post" action="/admin/roles/{{.ID}}/delete" class="role-delete-form" data-delete-role-form data-role-name="{{.Name}}">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <button class="button danger compact" type="submit">Hapus role</button>
+      </form>
+      {{else}}
+      <p class="role-usage-note">Tidak dapat dihapus selama masih digunakan {{.AssignedUsers}} pengguna.</p>
+      {{end}}
+    </div>
+  </article>
+  {{else}}<div class="empty-state"><h3>Belum ada role</h3><p>Buat role pertama melalui formulir di atas.</p></div>{{end}}
+</section>
+{{end}}
+
+{{if eq .AdminSection "parameters"}}
+<section class="admin-two-column parameter-layout">
+  <article class="panel admin-form-panel">
+    <header class="panel-header"><div><h2>Tambah parameter dropdown</h2><p>Parameter aktif langsung dipakai pada formulir dan validasi backend.</p></div></header>
+    <form class="admin-form" method="post" action="/admin/parameters" data-parameter-form>
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <div class="form-grid cols-2">
+        <label>Kelompok parameter <em>*</em><select name="group_code" required data-parameter-group>
+          <option value="">Pilih kelompok</option>
+          <option value="bdn_category">Kategori BDN</option>
+          <option value="item_kind">Jenis barang</option>
+          <option value="goods_condition">Kondisi barang</option>
+          <option value="unit">Satuan barang</option>
+          <option value="allocation_purpose">Jenis peruntukan BMMN</option>
+          <option value="origin_tps">TPS asal</option>
+          <option value="tpp">Nama TPP</option>
+          <option value="load_type">Jenis muatan (FCL/LCL)</option>
+          <option value="exit_type">Jenis pengeluaran</option>
+          <option value="transfer_type">Jenis serah terima (Hibah/PSP)</option>
+        </select></label>
+        <label>Label yang tampil <em>*</em><input name="label" maxlength="160" placeholder="Contoh: Barang mudah rusak" required data-parameter-label></label>
+        <label>Kode teknis<input name="code" maxlength="80" placeholder="Opsional; otomatis dari label" data-parameter-code></label>
+        <label>Urutan<input type="number" name="sort_order" min="1" max="9999" value="999"></label>
+      </div>
+      <fieldset class="parameter-scope" data-parameter-scope hidden><legend>Berlaku untuk jenis inventory</legend><label><input type="checkbox" name="applies_to" value="BTD"> BTD</label><label><input type="checkbox" name="applies_to" value="BDN"> BDN</label><label><input type="checkbox" name="applies_to" value="BMMN"> BMMN</label><label><input type="checkbox" name="applies_to" value="TITIPAN"> Barang Titipan</label></fieldset>
+      <p class="field-help" data-parameter-help>Pilih kelompok untuk melihat kegunaan parameter.</p>
+      <button class="button primary" type="submit">Tambah parameter</button>
+    </form>
+  </article>
+  <aside class="admin-guidance">
+    <h3>Pengelolaan master</h3>
+    <article><strong>Parameter dinonaktifkan, bukan menghapus riwayat.</strong><p>Nilai lama tetap tersimpan pada barang yang pernah menggunakannya, tetapi tidak muncul pada pilihan baru.</p></article>
+    <article><strong>Nama TPP terhubung ke master fasilitas.</strong><p>TPP baru langsung tersedia pada filter dan formulir. Kapasitas yard/shed awal bernilai 0 sampai diatur pada database.</p></article>
+    <article><strong>Dropdown inti tidak dapat diubah.</strong><p>Jenis inventory BTD/BDN/BMMN/Barang Titipan, status workflow, hasil lelang, dan status lartas tetap dikunci karena memengaruhi logika proses.</p></article>
+  </aside>
+</section>
+
+<section class="panel table-panel admin-panel">
+  <header class="panel-header parameter-table-header"><div><h2>Daftar parameter sistem</h2><p>Parameter dapat dicari, diedit, dinonaktifkan, dan dipulihkan kapan saja.</p></div><form class="parameter-search-form" method="get" action="/admin/parameters"><label class="search-field"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" name="q" value="{{.Query}}" placeholder="Cari kelompok, label, atau cakupan…"></label><button class="button secondary compact" type="submit">Cari</button>{{if .Query}}<a class="button ghost compact" href="/admin/parameters">Reset</a>{{end}}</form></header>
+  <div class="table-wrap">
+    <table class="data-table"><thead><tr><th>Kelompok</th><th>Label</th><th>Berlaku untuk</th><th>Status</th><th>Tindakan</th></tr></thead><tbody>
+      {{range .Parameters}}<tr>
+        <td><strong>{{parameterGroupLabel .GroupCode}}</strong>{{if .System}}<small>Parameter awal sistem</small>{{else}}<small>Ditambahkan admin</small>{{end}}</td>
+        <td><strong>{{.Label}}</strong><small>Urutan {{.SortOrder}}</small></td><td><strong>{{if .AppliesTo}}{{.AppliesTo}}{{else}}—{{end}}</strong></td>
+        <td><span class="admin-badge {{if .Active}}success{{else}}neutral{{end}}">{{if .Active}}Aktif{{else}}Nonaktif{{end}}</span></td>
+        <td class="parameter-actions-cell">
+          <details class="parameter-edit-details">
+            <summary class="button secondary compact">Edit</summary>
+            <form class="parameter-edit-form" method="post" action="/admin/parameters/{{.ID}}/update">
+              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+              <p><strong>{{parameterGroupLabel .GroupCode}}</strong><small>Identitas teknis tetap dipertahankan agar data lama konsisten.</small></p>
+              <label>Label<input name="label" value="{{.Label}}" maxlength="160" required></label>
+              <label>Urutan<input type="number" name="sort_order" min="1" max="9999" value="{{.SortOrder}}" required></label>
+              <fieldset><legend>Berlaku untuk</legend><label><input type="checkbox" name="applies_to" value="BTD" {{if appliesTo .AppliesTo "BTD"}}checked{{end}}> BTD</label><label><input type="checkbox" name="applies_to" value="BDN" {{if appliesTo .AppliesTo "BDN"}}checked{{end}}> BDN</label><label><input type="checkbox" name="applies_to" value="BMMN" {{if appliesTo .AppliesTo "BMMN"}}checked{{end}}> BMMN</label><label><input type="checkbox" name="applies_to" value="TITIPAN" {{if appliesTo .AppliesTo "TITIPAN"}}checked{{end}}> Barang Titipan</label></fieldset>
+              <button class="button primary compact" type="submit">Simpan perubahan</button>
+            </form>
+          </details>
+          <form method="post" action="/admin/parameters/{{.ID}}/status"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="active" value="{{if .Active}}false{{else}}true{{end}}"><button class="button ghost compact" type="submit">{{if .Active}}Hapus dari dropdown{{else}}Aktifkan kembali{{end}}</button></form>
+        </td>
+      </tr>{{else}}<tr><td colspan="5"><div class="empty-state small"><h3>Parameter belum tersedia</h3></div></td></tr>{{end}}
+    </tbody></table>
+  </div>
+</section>
+{{end}}
+{{end}}

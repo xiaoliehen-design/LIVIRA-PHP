@@ -1,0 +1,145 @@
+{{define "content"}}
+<section class="page-intro page-intro-actions">
+  <div><p>{{.Subtitle}}</p></div>
+  <div class="intro-actions">
+    {{if .History}}
+    <a class="button secondary" href="/proses/{{.ProcessType}}"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Kembali ke proses aktif</a>
+    {{else}}
+    <a class="button secondary history-button" href="/proses/{{.ProcessType}}?history=1"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>History</a>
+    {{if .CanManage}}<button class="button primary" type="button" data-open-process-action><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>Action</button>{{end}}
+    {{end}}
+  </div>
+</section>
+
+<section class="panel table-panel">
+  <form class="table-toolbar" method="get" action="/proses/{{.ProcessType}}">
+    {{if .History}}<input type="hidden" name="history" value="1">{{end}}
+    <input type="hidden" name="page_size" value="{{.Pagination.PageSize}}">
+    <label class="search-field"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" name="q" value="{{.Query}}" placeholder="Cari kontainer, nomor penetapan, atau uraian barang…"></label>
+    <label class="select-field"><span>TPP</span><select name="tpp" data-auto-submit><option value="">Semua TPP</option>{{range .Facilities}}<option value="{{.ID}}" {{if eq $.FacilityID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+    {{if .History}}<label class="select-field"><span>Arsip</span><select disabled><option>Seluruh riwayat</option></select></label>{{else}}<label class="select-field"><span>Status</span><select name="status" data-auto-submit><option value="">Semua proses</option><option value="active" {{if eq .Status "active"}}selected{{end}}>Masih berjalan</option><option value="completed" {{if eq .Status "completed"}}selected{{end}}>Selesai</option></select></label>{{end}}
+    <label class="select-field sort-field"><span>Urutkan</span><select name="sort" data-auto-submit><option value="newest" {{if eq .Sort "newest"}}selected{{end}}>Pembaruan terbaru</option><option value="determination_newest" {{if eq .Sort "determination_newest"}}selected{{end}}>Penetapan terbaru</option><option value="determination_oldest" {{if eq .Sort "determination_oldest"}}selected{{end}}>Penetapan terlama</option><option value="value_desc" {{if eq .Sort "value_desc"}}selected{{end}}>{{if eq .ProcessType "lelang"}}HTL tertinggi{{else}}Nilai tertinggi{{end}}</option><option value="value_asc" {{if eq .Sort "value_asc"}}selected{{end}}>{{if eq .ProcessType "lelang"}}HTL terendah{{else}}Nilai terendah{{end}}</option><option value="oldest" {{if eq .Sort "oldest"}}selected{{end}}>Pembaruan terlama</option></select></label>
+    <button class="button compact filter-button" type="submit">Terapkan</button>
+  </form>
+  <div class="table-meta"><p>Menampilkan <strong>{{.Pagination.StartItem}}–{{.Pagination.EndItem}}</strong> dari {{.Pagination.TotalItems}} {{if .History}}riwayat{{else}}proses{{end}} {{.ProcessSingular}}</p><span><i class="legend-dot {{.ProcessType}}"></i>Status kanan dapat diklik untuk melihat timestamp</span></div>
+  <div class="table-scroll-top" data-table-scroll-top aria-label="Geser tabel ke samping"><div></div></div>
+  <div class="table-pagination">
+    <div class="page-size-picker"><span>Tampilkan</span>{{range .Pagination.Sizes}}<a class="{{if .Selected}}active{{end}}" href="{{.URL}}">{{.Value}}</a>{{end}}<span>baris</span></div>
+    <div class="page-navigation"><span>Halaman {{.Pagination.Page}} dari {{.Pagination.TotalPages}} · Total {{.Pagination.TotalItems}} item</span>{{if .Pagination.HasPrevious}}<a href="{{.Pagination.PreviousURL}}">Sebelumnya</a>{{else}}<span class="disabled">Sebelumnya</span>{{end}}{{if .Pagination.HasNext}}<a href="{{.Pagination.NextURL}}">Berikutnya</a>{{else}}<span class="disabled">Berikutnya</span>{{end}}</div>
+  </div>
+  <div class="table-wrap" data-table-scroll-body>
+    <table class="data-table process-table">
+      <thead><tr><th>Kontainer & inventory</th><th>Uraian barang</th><th>Lokasi</th>{{if eq .ProcessType "lelang"}}<th>HTL / hasil lelang</th>{{else if eq .ProcessType "musnah"}}<th>Biaya musnah</th>{{else}}<th>Jenis serah terima</th>{{end}}<th class="status-column">Status proses</th></tr></thead>
+      <tbody>
+      {{range .Processes}}
+        <tr>
+          <td><strong>{{if .Inventory.ContainerNo}}{{.Inventory.ContainerNo}} · {{.Inventory.ContainerSize}}'{{else}}LCL · {{number .Inventory.EstimatedVolumeM3}} m³{{end}}</strong><small>{{.Inventory.DeterminationNo}} · {{.Inventory.Type}}</small></td>
+          <td class="description-cell"><strong>{{.Inventory.Description}}</strong><small>{{.Inventory.OwnerName}}</small></td>
+          <td><span class="facility-name">{{.Inventory.LocationStatus}}</span><small>{{.Inventory.Location}}</small></td>
+          {{if eq $.ProcessType "lelang"}}<td><strong>{{rupiah .HTLValue}}</strong><small>Harga Terendah Lelang</small><small>Hasil lelang: {{rupiah .SaleValue}}</small>{{if .ScheduleDocumentNo}}<small>ND Jadwal: {{.ScheduleDocumentNo}}</small>{{end}}{{if .AllocationTarget}}<small>Alokasi: {{.AllocationTarget}}</small>{{else}}<small>Pelaksanaan: {{date .ExecutionStartDate}} – {{date .ExecutionEndDate}}</small>{{end}}</td>{{else if eq $.ProcessType "musnah"}}<td><strong>{{rupiah .DestructionCost}}</strong><small>Biaya tercatat</small></td>{{else}}<td><strong>{{if eq .TransferType "hibah"}}HIBAH{{else if eq .TransferType "psp"}}PSP{{else}}Belum ditetapkan{{end}}</strong><small>Hibah / PSP</small></td>{{end}}
+          <td class="status-column"><button class="status-button {{statusTone .StatusCode}}" type="button" data-timeline-url="/api/proses/{{.ID}}/timeline"><span>{{.StatusLabel}}</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><small>Diperbarui {{date .UpdatedAt}}</small></td>
+        </tr>
+      {{else}}<tr><td colspan="5"><div class="empty-state"><span><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>{{if $.History}}<h3>Belum ada riwayat {{$.ProcessSingular}}</h3><p>Data akan berpindah ke halaman ini setelah proses mencapai tahap penyelesaian.</p>{{else}}<h3>Belum ada proses {{$.ProcessSingular}}</h3><p>Klik Action dan pilih barang dari inventory.</p>{{end}}</div></td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{{if not .History}}
+{{if .CanManage}}
+<div class="modal action-modal" id="process-action-drawer" role="dialog" aria-modal="true" aria-labelledby="process-action-title" hidden>
+  <div class="modal-backdrop" data-close-modal></div>
+  <section class="modal-panel modal-panel-wide action-modal-panel">
+    <header class="modal-header"><div><p class="eyebrow">Action {{.ProcessSingular}}</p><h2 id="process-action-title" data-action-modal-title data-default-title="Pilih submenu action {{.ProcessSingular}}">Pilih submenu action {{.ProcessSingular}}</h2><p data-action-modal-description data-default-description="Pilih action yang ingin dikerjakan. Form lengkap akan terbuka setelah submenu dipilih.">Pilih action yang ingin dikerjakan. Form lengkap akan terbuka setelah submenu dipilih.</p></div><button class="icon-button" type="button" data-close-modal aria-label="Tutup"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <form method="post" action="/proses/{{.ProcessType}}/bulk-action" enctype="multipart/form-data" data-process-bulk-form data-process-type="{{.ProcessType}}">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="event_code" data-event-code>
+      <div class="action-modal-scroll">
+        <section class="action-menu-stage" data-action-menu>
+          <div class="action-menu-intro"><strong>Pilih jenis action</strong><p>Klik salah satu submenu di bawah. Setelah dipilih, sistem menampilkan form action dalam popup yang lebih lebar dan mudah dikerjakan.</p></div>
+          <div class="step-picker action-step-grid">
+            {{range .ProcessActions}}<button type="button" class="step-option {{if .CreatesProcess}}highlight{{end}}" data-step-code="{{.Code}}" data-step-label="{{.Label}}" data-step-description="{{.Description}}" data-step-document="{{.Document}}" data-creates-process="{{.CreatesProcess}}" data-allowed-status="{{.AllowedStatus}}"><span class="step-check"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><span><strong>{{.Label}}</strong><small>{{.Description}}</small></span><svg class="step-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>{{end}}
+          </div>
+        </section>
+        <section class="action-detail-stage" data-action-detail hidden>
+          <div class="action-detail-toolbar"><button class="button ghost compact action-back-button" type="button" data-back-action-menu><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Kembali ke daftar action</button><div class="selected-step" data-selected-step hidden><span>Action dipilih</span><strong data-selected-step-label></strong></div></div>
+
+        <section class="action-field-section inventory-multi-picker" data-process-picker hidden>
+          <div class="picker-heading"><div><h3>Pilih barang</h3><p data-process-picker-help>{{if eq .ProcessType "musnah"}}Pilih barang aktif atau barang lelang berstatus Tidak Laku. Barang Tidak Laku yang dipilih akan dipindahkan dari lelang ke pemusnahan.{{else if eq .ProcessType "hibah"}}Pilih barang aktif atau barang lelang berstatus Tidak Laku. Barang Tidak Laku yang dipilih akan dipindahkan dari lelang ke hibah/PSP.{{else}}Pilih kontainer yang akan diproses.{{end}}</p></div><strong data-process-picker-count>0 barang dipilih</strong></div>
+          <div class="picker-controls">
+            <label class="search-field large"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-process-picker-search placeholder="Cari kontainer, penetapan, atau uraian…" autocomplete="off"></label>
+            <div class="picker-selection-toolbar"><label class="picker-select-all"><input type="checkbox" data-process-picker-select-all><span>Pilih semua hasil yang tampil</span></label><button type="button" class="picker-clear" data-process-picker-clear>Kosongkan pilihan</button></div>
+          </div>
+          <div class="multi-picker-list" data-process-picker-list>
+            {{range .EligibleItems}}
+            <label class="multi-picker-item" data-process-candidate data-candidate-source="inventory" data-status="" data-search="{{lower .DeterminationNo}} {{lower .ContainerNo}} {{lower .Description}}" hidden>
+              <input type="checkbox" name="inventory_ids" value="{{.ID}}" data-process-candidate-checkbox disabled>
+              <span><strong>{{if .ContainerNo}}{{.ContainerNo}} · {{.ContainerSize}}'{{else}}LCL · {{number .EstimatedVolumeM3}} m³{{end}}</strong><small>{{.Type}} · {{.DeterminationNo}}</small><em>{{.Description}}</em></span><i>{{if and (eq .CurrentDisposition "lelang") (eq .StatusCode "tidak_laku")}}Tidak Laku · dialihkan{{else}}{{.StatusLabel}}{{end}}</i>
+            </label>
+            {{end}}
+            {{range .CandidateProcesses}}
+            <label class="multi-picker-item" data-process-candidate data-candidate-source="process" data-process-id="{{.ID}}" data-status="{{.StatusCode}}" data-active="{{.IsActive}}" data-description="{{.Inventory.Description}}" data-container-label="{{if .Inventory.ContainerNo}}{{.Inventory.ContainerNo}} · {{containerSizeLabel .Inventory.ContainerSize}}{{else}}LCL · {{number .Inventory.EstimatedVolumeM3}} m³{{end}}" data-determination="{{.Inventory.DeterminationNo}}" data-search="{{lower .Inventory.DeterminationNo}} {{lower .Inventory.ContainerNo}} {{lower .Inventory.Description}}" hidden>
+              <input type="checkbox" name="process_ids" value="{{.ID}}" data-process-candidate-checkbox disabled>
+              <span><strong>{{if .Inventory.ContainerNo}}{{.Inventory.ContainerNo}} · {{.Inventory.ContainerSize}}'{{else}}LCL · {{number .Inventory.EstimatedVolumeM3}} m³{{end}}</strong><small>{{.Inventory.Type}} · {{.Inventory.DeterminationNo}}</small><em>{{.Inventory.Description}}</em></span><i>{{.StatusLabel}}</i>
+            </label>
+            {{end}}
+          </div>
+          <p class="picker-empty" data-process-picker-empty hidden>Tidak ada barang dengan status yang sesuai untuk action ini.</p>
+        </section>
+
+        {{if eq .ProcessType "lelang"}}
+        <section class="action-field-section auction-schedule-picker" data-auction-schedule-picker hidden>
+          <div class="picker-heading"><div><h3>Pilih ND penjadwalan lelang</h3><p>Pilih satu ND, lalu tetapkan hasil setiap kontainer atau barang di dalam jadwal tersebut.</p></div><strong data-auction-schedule-count>0 ND dipilih</strong></div>
+          <input type="hidden" name="auction_schedule_no" data-auction-schedule-no disabled>
+          <input type="hidden" name="auction_results_json" data-auction-results-json disabled>
+          <div class="picker-controls auction-picker-controls">
+            <label class="search-field large"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-auction-schedule-search placeholder="Cari nomor ND penjadwalan lelang…" autocomplete="off"></label>
+            <button type="button" class="picker-clear" data-auction-schedule-clear disabled>Kosongkan pencarian</button>
+          </div>
+          <div class="auction-filter-summary"><span data-auction-schedule-visible>{{len .AuctionScheduleGroups}} ND tersedia</span><small>Pilih satu ND untuk membuka daftar barang di dalamnya.</small></div>
+          <div class="auction-schedule-list">
+            {{range .AuctionScheduleGroups}}
+            <article class="auction-schedule-card" data-auction-schedule-card data-schedule-no="{{.DocumentNo}}" data-auction-schedule-search-value="{{lower .DocumentNo}}">
+              <button type="button" class="auction-schedule-button" data-auction-schedule-button><span class="auction-schedule-leading"><i class="auction-schedule-badge">ND</i><span class="auction-schedule-copy"><strong>{{.DocumentNo}}</strong><small>{{date .DocumentDate}} · {{len .Processes}} barang menunggu hasil</small></span></span><span class="auction-schedule-action"><em>Pilih jadwal</em><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></button>
+              <div class="auction-result-list" data-auction-result-list hidden>
+                {{range .Processes}}
+                <section class="auction-result-row" data-auction-result-row data-process-id="{{.ID}}">
+                  <header><div><strong>{{if .Inventory.ContainerNo}}{{.Inventory.ContainerNo}} · {{containerSizeLabel .Inventory.ContainerSize}}{{else}}LCL · {{number .Inventory.EstimatedVolumeM3}} m³{{end}}</strong><small>{{.Inventory.DeterminationNo}} · HTL {{rupiah .HTLValue}}</small></div><p>{{.Inventory.Description}}</p></header>
+                  <div class="form-grid cols-2"><label>Status hasil <em>*</em><select data-auction-result-outcome disabled><option value="">Pilih hasil</option><option value="laku">Laku</option><option value="tidak_laku">Tidak laku</option></select></label><label data-auction-result-sale hidden>Harga jual <em>*</em><input inputmode="numeric" data-auction-result-sale-input disabled placeholder="Nilai hasil penjualan"></label></div>
+                </section>
+                {{end}}
+              </div>
+            </article>
+            {{else}}<div class="picker-empty static-empty">Belum ada ND penjadwalan lelang yang menunggu penetapan hasil.</div>{{end}}
+          </div>
+          <p class="picker-empty" data-auction-schedule-empty hidden>Nomor ND penjadwalan tidak ditemukan.</p>
+        </section>
+        {{end}}
+
+        <div class="action-fields" data-process-action-fields hidden>
+          <section class="action-field-section"><h3>Dokumen action</h3><div class="form-grid cols-2"><label data-document-label>Nomor dokumen <em>*</em><input name="document_no" required disabled></label><label>Tanggal dokumen <em>*</em><input type="date" name="document_date" value="{{isoDate .Now}}" required disabled></label><label class="span-2 document-upload-field">Upload dokumen <span class="optional-mark">Opsional</span><input type="file" name="document_file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif" disabled><small>PDF atau gambar, maksimal 8 MB. File dapat diunduh kembali melalui timeline.</small></label></div></section>
+
+          {{if eq .ProcessType "lelang"}}
+          <section class="action-field-section" data-process-fields-for="kep_htl" hidden><h3>Harga Terendah Lelang per barang</h3><input type="hidden" name="htl_results_json" data-htl-results-json disabled><div class="per-item-value-list" data-htl-editor-list><p class="field-help">Pilih satu atau beberapa barang. Setiap barang akan memperoleh input nilai HTL tersendiri.</p></div><p class="field-help">Nilai HTL memengaruhi barang yang bersangkutan saja dan tidak mengganti nilai penelitian PFPD.</p></section>
+          <section class="action-field-section" data-process-fields-for="jadwal_lelang" hidden><h3>Pelaksanaan lelang</h3><div class="form-grid cols-2"><label>Tanggal mulai <em>*</em><input type="date" name="execution_start_date" required disabled></label><label>Tanggal selesai<input type="date" name="execution_end_date" disabled></label></div><p class="field-help">Kosongkan tanggal selesai apabila pelaksanaan hanya satu hari.</p></section>
+          <section class="action-field-section" data-process-fields-for="selesai_lelang" hidden><h3>Hasil lelang</h3><p class="field-help">Nomor dan tanggal risalah diterapkan kepada seluruh barang dalam ND penjadwalan yang dipilih.</p></section>
+          <section class="action-field-section" data-process-fields-for="lelang_penyesuaian" hidden><h3>Lelang penyesuaian</h3><p class="field-help">Hanya barang berstatus Tidak Laku yang dapat dipilih. Putaran bertambah tanpa penetapan HTL baru.</p></section>
+          <section class="action-field-section" data-process-fields-for="alokasi_hasil_lelang" hidden><h3>Alokasi hasil lelang</h3><label>Dialokasikan ke mana <em>*</em><textarea name="allocation_target" rows="3" required disabled placeholder="Isi tujuan atau keterangan alokasi hasil lelang"></textarea></label></section>
+          {{else if eq .ProcessType "musnah"}}
+          <section class="action-field-section" data-process-fields-for="kep_musnah" hidden><h3>Biaya pemusnahan</h3><label>Biaya musnah <em>*</em><input inputmode="numeric" name="destruction_cost" required disabled placeholder="Biaya dalam rupiah"></label></section>
+          <section class="action-field-section" data-process-fields-for="ba_musnah" hidden><h3>Pelaksanaan pemusnahan</h3><label>Biaya musnah aktual <em>*</em><input inputmode="numeric" name="destruction_cost" required disabled placeholder="Biaya aktual dalam rupiah"></label></section>
+          {{else}}
+          <section class="action-field-section" data-process-fields-for="ba_serah_terima" hidden><h3>Jenis serah terima</h3><label>Jenis <em>*</em><select name="transfer_type" required disabled><option value="">Pilih jenis</option>{{range .TransferTypeOptions}}<option value="{{.Code}}">{{.Label}}</option>{{end}}</select></label></section>
+          {{end}}
+
+          <section class="action-field-section"><h3>Catatan</h3><label>Keterangan tambahan<textarea name="notes" rows="3" placeholder="Opsional"></textarea></label></section>
+        </div>
+        </section>
+      </div>
+      <footer class="modal-footer action-modal-footer"><button class="button ghost" type="button" data-close-modal>Batal</button><button class="button primary" type="submit" disabled hidden data-submit-step data-action-submit>Simpan action</button></footer>
+    </form>
+  </section>
+</div>
+{{end}}
+{{end}}
+
+{{end}}
