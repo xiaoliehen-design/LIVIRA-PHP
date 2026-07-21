@@ -384,9 +384,9 @@
   const inventoryImportTitle = $("[data-import-title]", createInventoryModal);
   const inventoryTemplateLink = $("[data-import-template-link]", createInventoryModal);
   const inventoryTemplateConfig = {
-    BTD: { href: "/assets/templates/template_upload_btd.xlsx", label: "Unduh template BTD", title: "Upload banyak Pencatatan BTD" },
-    BDN: { href: "/assets/templates/template_upload_bdn.xlsx", label: "Unduh template BDN", title: "Upload banyak Penetapan BDN" },
-    TITIPAN: { href: "/assets/templates/template_upload_barang_titipan.xlsx", label: "Unduh template Barang Titipan", title: "Upload banyak Barang Titipan" },
+    BTD: { href: "/templates/template_upload_btd.xlsx?v=1.0.6", label: "Unduh template BTD", title: "Upload banyak Pencatatan BTD" },
+    BDN: { href: "/templates/template_upload_bdn.xlsx?v=1.0.6", label: "Unduh template BDN", title: "Upload banyak Penetapan BDN" },
+    TITIPAN: { href: "/templates/template_upload_barang_titipan.xlsx?v=1.0.6", label: "Unduh template Barang Titipan", title: "Upload banyak Barang Titipan" },
   };
 
   function setInventoryEntryMode(mode) {

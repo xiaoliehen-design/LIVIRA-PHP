@@ -185,10 +185,32 @@ final class App
     }
     private function importInventory(Request $r):Response
     {
-        $file=$r->files['excel_file']??null;if(!is_array($file)||($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK)throw new ApiException('Pilih file XLSX yang valid.',422);if((int)$file['size']>5*1024*1024)throw new ApiException('Ukuran file Excel maksimal 5 MB.',422);
-        $rows=Xlsx::read((string)$file['tmp_name'],1002);if(count($rows)<2)throw new ApiException('File Excel tidak memiliki data.',422);$headers=array_map([$this,'normalizeHeader'],$rows[0]);$type=strtoupper((string)$r->input('item_type'));if(!Domain::can($this->session($r),Domain::createPermission($type)))throw new ApiException('Tidak memiliki akses import jenis ini.',403);$inputs=[];
-        foreach(array_slice($rows,1) as $line=>$values){if(count(array_filter($values,fn($v)=>trim((string)$v)!==''))===0)continue;$row=[];foreach($headers as $i=>$header)if($header!=='')$row[$header]=$values[$i]??'';$mapped=$this->mapImportRow($row,$type,$line+2);$mapped['actor']=$this->actor($r);$inputs[]=$mapped;}
-        if(!$inputs)throw new ApiException('Tidak ada baris data yang dapat diimpor.',422);if(count($inputs)>1000)throw new ApiException('Maksimal 1.000 baris data.',422);$this->store->createInventories($inputs);return$this->back($r,count($inputs).' baris Excel berhasil diimpor.','/inventory');
+        $file=$r->files['excel_file']??null;
+        if(!is_array($file)||($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK)throw new ApiException('Pilih file template Excel berformat .xlsx terlebih dahulu.',422);
+        $name=trim((string)($file['name']??''));
+        if(!str_ends_with(mb_strtolower($name),'.xlsx'))throw new ApiException('Format file harus .xlsx. Gunakan template yang tersedia pada menu upload.',422);
+        if((int)($file['size']??0)<=0||(int)$file['size']>6*1024*1024)throw new ApiException('Ukuran file Excel maksimal 6 MB.',422);
+        $rows=Xlsx::read((string)$file['tmp_name'],1002);
+        if(count($rows)<2)throw new ApiException('File Excel tidak memiliki data.',422);
+        $headers=array_map([$this,'normalizeHeader'],$rows[0]);
+        $type=strtoupper(trim((string)$r->input('item_type')));
+        if(!Domain::can($this->session($r),Domain::createPermission($type)))throw new ApiException('Tidak memiliki akses import jenis ini.',403);
+
+        $references=$this->importReferenceOptions();
+        $facilities=$this->importFacilityMap();
+        $inputs=[];$inputRows=[];
+        foreach(array_slice($rows,1) as $line=>$values){
+            if(count(array_filter($values,fn($v)=>trim((string)$v)!==''))===0)continue;
+            $row=[];
+            foreach($headers as $i=>$header)if($header!=='')$row[$header]=$values[$i]??'';
+            $inputs[]=$this->mapImportRow($row,$type,$line+2,$references,$facilities);
+            $inputRows[]=$line+2;
+        }
+        if(!$inputs)throw new ApiException('Tidak ada baris data yang dapat diimpor.',422);
+        if(count($inputs)>1000)throw new ApiException('Maksimal 1.000 baris data.',422);
+        $this->finalizeImportRows($inputs,$inputRows);
+        $this->store->createInventories($inputs);
+        return$this->back($r,count($inputs).' baris Excel berhasil diimpor.','/inventory?type='.strtolower($type));
     }
     private function inventoryEvent(Request $r,bool $bulk):Response
     {
@@ -794,8 +816,228 @@ final class App
     private function bool(mixed $v):bool{return filter_var($v,FILTER_VALIDATE_BOOL)||in_array(strtolower((string)$v),['1','ya','yes','on','sudah'],true);}
     private function number(mixed $v):float{$s=str_replace(',','.',preg_replace('/[^0-9,.-]/','',(string)$v));return is_numeric($s)?(float)$s:0;}
     private function money(mixed $v):int{return(int)preg_replace('/\D/','',(string)$v);}
-    private function normalizeHeader(string $v):string{$v=mb_strtolower(trim($v));$map=['nomor penetapan'=>'determination_no','no penetapan'=>'determination_no','tanggal penetapan'=>'determination_date','nomor dokumen'=>'determination_no','tanggal dokumen'=>'determination_date','nomor bl'=>'bl_no','tanggal bl'=>'bl_date','nomor manifest'=>'manifest_no','tanggal manifest'=>'manifest_date','pos manifest'=>'manifest_position','kategori bdn'=>'category','kategori titipan'=>'entrusted_category','kantor penitip'=>'source_office','uraian barang'=>'description','jenis barang'=>'item_kind','nilai barang'=>'goods_value','jumlah barang'=>'quantity','detail jumlah'=>'quantity_detail','satuan'=>'unit','kondisi barang'=>'goods_condition','nama pemilik'=>'owner_name','alamat pemilik'=>'owner_address','tps asal'=>'origin_warehouse','tpp'=>'facility_id','lokasi'=>'location','jenis muatan'=>'load_type','nomor kontainer'=>'container_no','ukuran kontainer'=>'container_size','volume m3'=>'estimated_volume_m3'];$v=preg_replace('/\s+/',' ',$v);return$map[$v]??str_replace(' ','_',$v);}
-    private function mapImportRow(array $row,string $type,int $line):array{$row['type']=$type;$row['reference_no']=trim((string)($row['reference_no']??''));$row['quantity']=$this->number($row['quantity']??0);$row['goods_value']=$this->money($row['goods_value']??0);$row['estimated_volume_m3']=$this->number($row['estimated_volume_m3']??0);$row['load_type']=strtoupper(trim((string)($row['load_type']??(!empty($row['container_no'])?'FCL':'LCL'))));$row['at_tpp']=trim((string)($row['facility_id']??''))!=='';$row['occupancy_primary']=true;if(trim((string)($row['determination_no']??''))===''||trim((string)($row['description']??''))===''||$row['quantity']<=0)throw new ApiException('Baris '.$line.': nomor dokumen, uraian, dan jumlah wajib diisi.',422);return$row;}
+    private function normalizeHeader(string $v):string
+    {
+        $v=mb_strtolower(trim($v));
+        $v=preg_replace('/[^\pL\pN]+/u',' ',$v)??'';
+        $v=trim(preg_replace('/\s+/u',' ',$v)??'');
+        $map=[
+            'nomor btd'=>'determination_no','tanggal btd'=>'determination_date',
+            'nomor penetapan'=>'determination_no','no penetapan'=>'determination_no','tanggal penetapan'=>'determination_date',
+            'nomor dokumen'=>'determination_no','nomor dokumen dasar pemasukan'=>'determination_no','tanggal dokumen'=>'determination_date',
+            'nomor bl'=>'bl_no','tanggal bl'=>'bl_date','nomor manifest'=>'manifest_no','tanggal manifest'=>'manifest_date','pos manifest'=>'manifest_position',
+            'kategori bdn'=>'category','kategori barang'=>'entrusted_category','kategori titipan'=>'entrusted_category','kantor unit penitip'=>'source_office','kantor penitip'=>'source_office',
+            'jenis muatan'=>'load_type','tps asal'=>'origin_warehouse','nomor kontainer fcl'=>'container_no','nomor kontainer'=>'container_no',
+            'ukuran kontainer fcl'=>'container_size','ukuran kontainer'=>'container_size','perkiraan volume m3 lcl'=>'estimated_volume_m3','volume m3'=>'estimated_volume_m3',
+            'uraian barang'=>'description','jenis barang'=>'item_kind','nilai awal barang'=>'goods_value','nilai barang'=>'goods_value','jumlah'=>'quantity','jumlah barang'=>'quantity',
+            'detail jumlah'=>'quantity_detail','satuan'=>'unit','kondisi barang'=>'goods_condition','sudah di tpp'=>'at_tpp','nama tpp jika ya'=>'facility_name','nama tpp'=>'facility_name','tpp'=>'facility_name',
+            'blok gudang di tpp'=>'location','lokasi'=>'location','nama shipper consignee'=>'owner_name','nama pemilik'=>'owner_name','alamat shipper consignee'=>'owner_address','alamat pemilik'=>'owner_address',
+        ];
+        return$map[$v]??str_replace(' ','_',$v);
+    }
+    private function mapImportRow(array $row,string $type,int $line,array $references,array $facilities):array
+    {
+        $get=static fn(string $key):string=>trim((string)($row[$key]??''));
+        $errors=[];
+        $mapped=['type'=>$type,'reference_no'=>''];
+        $mapped['determination_no']=$get('determination_no');
+        if($mapped['determination_no']==='')$errors[]='nomor dokumen wajib diisi';
+        $mapped['determination_date']=$this->importDate($get('determination_date'));
+        if($mapped['determination_date']===null)$errors[]='tanggal dokumen wajib diisi dengan format dd/mm/yyyy';
+
+        $mapped['bl_no']=$get('bl_no');
+        $mapped['bl_date']=$this->importDate($get('bl_date'));
+        if($type==='BTD'){
+            if($mapped['bl_no']==='')$errors[]='nomor BL wajib diisi untuk BTD';
+            if($mapped['bl_date']===null)$errors[]='tanggal BL wajib diisi dengan format dd/mm/yyyy untuk BTD';
+        }
+        $mapped['manifest_no']=$get('manifest_no');
+        $mapped['manifest_position']=$get('manifest_position');
+        $manifestRaw=$get('manifest_date');
+        $mapped['manifest_date']=$manifestRaw===''?null:$this->importDate($manifestRaw);
+        if($manifestRaw!==''&&$mapped['manifest_date']===null)$errors[]='tanggal manifest tidak valid';
+
+        if($type==='BDN'){
+            $mapped['category']=$this->canonicalImportOption($get('category'),$references['bdn_category']??[]);
+            if($mapped['category']==='')$errors[]='kategori BDN tidak sesuai pilihan aplikasi';
+        }
+        if($type==='TITIPAN'){
+            $mapped['entrusted_category']=$this->canonicalImportOption($get('entrusted_category'),$references['entrusted_category']??[]);
+            if($mapped['entrusted_category']==='')$errors[]='kategori barang titipan tidak sesuai pilihan aplikasi';
+            $mapped['source_office']=$get('source_office');
+            if($mapped['source_office']==='')$errors[]='kantor/unit penitip wajib diisi';
+        }
+
+        $load=strtoupper($get('load_type'));
+        if(!in_array($load,['FCL','LCL'],true))$errors[]='jenis muatan harus FCL atau LCL';
+        $mapped['load_type']=$load;
+        if($type!=='TITIPAN'){
+            $mapped['origin_warehouse']=$this->canonicalImportOption($get('origin_warehouse'),$references['origin_tps']??[]);
+            if($mapped['origin_warehouse']==='')$errors[]='TPS asal tidak sesuai pilihan aplikasi';
+        }
+
+        $mapped['container_no']='';$mapped['container_size']='';$mapped['estimated_volume_m3']=0.0;
+        if($load==='FCL'){
+            $container=strtoupper(preg_replace('/[^A-Z0-9]/i','',$get('container_no'))??'');
+            if(!preg_match('/^[A-Z]{4}[0-9]{7}$/',$container))$errors[]='nomor kontainer FCL harus 4 huruf dan 7 angka tanpa spasi/tanda hubung';
+            else$mapped['container_no']=$container;
+            $mapped['container_size']=$this->importContainerSize($get('container_size'));
+            if($mapped['container_size']==='')$errors[]="ukuran kontainer harus 20', 40', 40' HC, atau 45' HC";
+        }elseif($load==='LCL'){
+            $mapped['estimated_volume_m3']=$this->importNumber($get('estimated_volume_m3'));
+            if($mapped['estimated_volume_m3']<=0)$errors[]='perkiraan volume LCL harus lebih dari 0 m3';
+            if($get('container_no')!==''||$get('container_size')!=='')$errors[]='nomor dan ukuran kontainer harus dikosongkan untuk LCL';
+        }
+
+        $mapped['description']=$get('description');
+        if($mapped['description']==='')$errors[]='uraian barang wajib diisi';
+        $mapped['item_kind']=$this->canonicalImportOption($get('item_kind'),$references['item_kind']??[]);
+        if($mapped['item_kind']==='')$errors[]='jenis barang tidak sesuai pilihan aplikasi';
+        $mapped['quantity']=$this->importNumber($get('quantity'));
+        if($mapped['quantity']<=0)$errors[]='jumlah harus berupa angka lebih dari 0';
+        $mapped['quantity_detail']=$get('quantity_detail');
+        $mapped['unit']=$this->canonicalImportOption($get('unit'),$references['unit']??[]);
+        if($mapped['unit']==='')$errors[]='satuan tidak sesuai pilihan aplikasi';
+        $mapped['goods_value']=$this->money($get('goods_value'));
+        $mapped['goods_condition']=$get('goods_condition');
+
+        [$atTPP,$validAtTPP]=$this->importYesNo($get('at_tpp'));
+        if(!$validAtTPP)$errors[]='kolom Sudah di TPP? harus Ya atau Tidak';
+        $mapped['at_tpp']=$atTPP;
+        $facilityValue=$get('facility_name');
+        if($atTPP){
+            $facility=$facilities[$this->normalizeImportValue($facilityValue)]??null;
+            if(!is_array($facility))$errors[]='nama TPP tidak ditemukan atau tidak aktif';
+            else$mapped['facility_id']=(string)$facility['id'];
+        }else$mapped['facility_id']='';
+        $mapped['location']=$get('location');
+        $mapped['owner_name']=$get('owner_name');
+        $mapped['owner_address']=$get('owner_address');
+        $mapped['occupancy_primary']=true;
+
+        if($errors)throw new ApiException('Baris '.$line.': '.implode('; ',$errors).'. Tidak ada data yang disimpan.',422);
+        return$mapped;
+    }
+    private function importReferenceOptions():array
+    {
+        $groups=[
+            'origin_tps'=>Domain::TPS_NAMES,
+            'bdn_category'=>Domain::BDN_CATEGORIES,
+            'entrusted_category'=>Domain::ENTRUSTED_CATEGORIES,
+            'item_kind'=>Domain::ITEM_KINDS,
+            'unit'=>Domain::UNITS,
+        ];
+        try{
+            foreach($this->store->parameterOptions('',false) as $parameter){
+                if(empty($parameter['active']))continue;
+                $group=(string)($parameter['group_code']??'');
+                $label=trim((string)($parameter['label']??''));
+                if(isset($groups[$group])&&$label!=='')$groups[$group][]=$label;
+            }
+        }catch(\Throwable){}
+        foreach($groups as $group=>$values)$groups[$group]=array_values(array_unique(array_filter(array_map('trim',$values))));
+        return$groups;
+    }
+    private function importFacilityMap():array
+    {
+        $out=[];
+        foreach($this->store->facilities() as $facility){
+            if(empty($facility['active']))continue;
+            foreach([(string)($facility['name']??''),(string)($facility['id']??'')] as $value){
+                $key=$this->normalizeImportValue($value);
+                if($key!=='')$out[$key]=$facility;
+            }
+        }
+        return$out;
+    }
+    private function finalizeImportRows(array &$inputs,array $inputRows):void
+    {
+        $fcl=[];$lcl=[];
+        foreach($inputs as $index=>&$input){
+            $row=$inputRows[$index]??($index+2);
+            if(($input['load_type']??'')==='FCL'){
+                $key=(string)$input['container_no'];
+                $signature=implode('|',[
+                    $input['type']??'',$input['determination_no']??'',$input['determination_date']??'',
+                    $input['bl_no']??'',$input['bl_date']??'',$input['manifest_no']??'',$input['origin_warehouse']??'',
+                    $input['facility_id']??'',$input['container_size']??'',!empty($input['at_tpp'])?'1':'0',
+                ]);
+                $unit=(string)($input['type']??'').'|'.(string)($input['determination_no']??'').'|'.$key;
+                if(isset($fcl[$key])){
+                    if($fcl[$key]['signature']!==$signature)throw new ApiException('Baris '.$row.': nomor kontainer sama dengan baris '.$fcl[$key]['row'].' tetapi dokumen, ukuran, manifest, BL, TPS/TPP, atau status lokasinya tidak konsisten. Tidak ada data yang disimpan.',422);
+                    $input['physical_unit_id']=$fcl[$key]['unit'];$input['occupancy_primary']=false;
+                }else{
+                    $fcl[$key]=['row'=>$row,'signature'=>$signature,'unit'=>$unit];
+                    $input['physical_unit_id']=$unit;$input['occupancy_primary']=true;
+                }
+            }else{
+                $key=(string)($input['type']??'').'|'.(string)($input['determination_no']??'').'|'.(string)($input['determination_date']??'');
+                $signature=implode('|',[
+                    $input['bl_no']??'',$input['bl_date']??'',$input['manifest_no']??'',$input['origin_warehouse']??'',
+                    $input['facility_id']??'',sprintf('%.6F',(float)($input['estimated_volume_m3']??0)),!empty($input['at_tpp'])?'1':'0',
+                ]);
+                if(isset($lcl[$key])){
+                    if($lcl[$key]['signature']!==$signature)throw new ApiException('Baris '.$row.': data LCL satu dokumen tidak konsisten dengan baris '.$lcl[$key]['row'].' pada volume, manifest, BL, TPS/TPP, atau status lokasi. Tidak ada data yang disimpan.',422);
+                    $input['physical_unit_id']=$key;$input['occupancy_primary']=false;
+                }else{
+                    $lcl[$key]=['row'=>$row,'signature'=>$signature];
+                    $input['physical_unit_id']=$key;$input['occupancy_primary']=true;
+                }
+            }
+        }
+        unset($input);
+        $counts=[];foreach($inputs as $input)$counts[(string)$input['determination_no']]=($counts[(string)$input['determination_no']]??0)+1;
+        $positions=[];
+        foreach($inputs as &$input){
+            $no=(string)$input['determination_no'];$positions[$no]=($positions[$no]??0)+1;
+            $input['reference_no']=$counts[$no]>1?$no.'/'.str_pad((string)$positions[$no],2,'0',STR_PAD_LEFT):$no;
+        }
+        unset($input);
+    }
+    private function normalizeImportValue(string $value):string{return mb_strtolower(trim(preg_replace('/\s+/u',' ',$value)??''));}
+    private function canonicalImportOption(string $value,array $options):string
+    {
+        $needle=$this->normalizeImportValue($value);if($needle==='')return'';
+        foreach($options as $option)if($this->normalizeImportValue((string)$option)===$needle)return(string)$option;
+        return'';
+    }
+    private function importContainerSize(string $value):string
+    {
+        $compact=strtoupper(str_replace(['’',"'",'"',' ','-'],'',trim($value)));
+        return match($compact){'20','20FT'=>'20','40','40FT'=>'40','40HC','40H','40HIGHCUBE'=>'40HC','45','45HC','45H','45HIGHCUBE'=>'45HC',default=>''};
+    }
+    private function importYesNo(string $value):array
+    {
+        return match($this->normalizeImportValue($value)){
+            'ya','y','yes','sudah','true','1'=>[true,true],
+            'tidak','n','no','belum','false','0'=>[false,true],
+            default=>[false,false],
+        };
+    }
+    private function importDate(mixed $value):?string
+    {
+        $raw=trim((string)$value);if($raw==='')return null;
+        $numeric=str_replace(',','.',$raw);
+        if(is_numeric($numeric)){
+            $serial=(float)$numeric;
+            if($serial>1){$seconds=(int)round(($serial-25569)*86400);return gmdate('Y-m-d',$seconds);}
+        }
+        foreach(['!d/m/Y','!j/n/Y','!Y-m-d','!d-m-Y','!j-n-Y'] as $format){
+            $date=\DateTimeImmutable::createFromFormat($format,$raw,new \DateTimeZone('UTC'));
+            $errors=\DateTimeImmutable::getLastErrors();
+            if($date!==false&&($errors===false||((int)$errors['warning_count']===0&&(int)$errors['error_count']===0)))return$date->format('Y-m-d');
+        }
+        try{return(new \DateTimeImmutable($raw,new \DateTimeZone('UTC')))->format('Y-m-d');}catch(\Throwable){return null;}
+    }
+    private function importNumber(mixed $value):float
+    {
+        $raw=str_replace(' ','',trim((string)$value));if($raw==='')return 0.0;
+        if(str_contains($raw,',')&&!str_contains($raw,'.'))$raw=str_replace(',','.',$raw);
+        elseif(str_contains($raw,',')&&str_contains($raw,'.')){
+            if(strrpos($raw,',')>strrpos($raw,'.')){$raw=str_replace('.','',$raw);$raw=str_replace(',','.',$raw);}else$raw=str_replace(',','',$raw);
+        }
+        return is_numeric($raw)?(float)$raw:0.0;
+    }
     private function optionalDocument(Request $r):string{$file=$r->files['document_file']??null;if(!is_array($file)||($file['error']??UPLOAD_ERR_NO_FILE)===UPLOAD_ERR_NO_FILE)return'';if(($file['error']??UPLOAD_ERR_OK)!==UPLOAD_ERR_OK)throw new ApiException('Upload dokumen gagal.',422);$doc=$this->store->createDocument($file,$this->actor($r));return(string)($doc['id']??'');}
     private function safeReturn(Request $r,string $fallback):string{$target=(string)$r->input('return_to',$r->header('referer'));if($target==='')return$fallback;$path=parse_url($target,PHP_URL_PATH)?:'';$query=parse_url($target,PHP_URL_QUERY);if(!str_starts_with($path,'/')||str_starts_with($path,'//'))return$fallback;return$path.($query?'?'.$query:'');}
     private function back(Request $r,string $message,string $fallback='/'):Response{$url=$this->safeReturn($r,$fallback);$separator=str_contains($url,'?')?'&':'?';return Response::redirect($url.$separator.'success='.rawurlencode($message));}

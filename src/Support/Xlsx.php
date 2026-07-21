@@ -18,9 +18,9 @@ final class Xlsx
             $sharedFile = $dir.'/xl/sharedStrings.xml';
             if (is_file($sharedFile)) {
                 $xml = (string) file_get_contents($sharedFile);
-                if (preg_match_all('/<si\b[^>]*>(.*?)<\/si>/s', $xml, $matches)) {
+                if (preg_match_all('/<(?:[A-Za-z_][\w.-]*:)?si\b[^>]*>(.*?)<\/(?:[A-Za-z_][\w.-]*:)?si>/s', $xml, $matches)) {
                     foreach ($matches[1] as $si) {
-                        preg_match_all('/<t\b[^>]*>(.*?)<\/t>/s', $si, $texts);
+                        preg_match_all('/<(?:[A-Za-z_][\w.-]*:)?t\b[^>]*>(.*?)<\/(?:[A-Za-z_][\w.-]*:)?t>/s', $si, $texts);
                         $shared[] = self::xmlText(implode('', $texts[1] ?? []));
                     }
                 }
@@ -31,13 +31,13 @@ final class Xlsx
             }
             $xml = (string) file_get_contents($sheet);
             $rows = [];
-            if (preg_match_all('/<row\b[^>]*>(.*?)<\/row>/s', $xml, $rowMatches)) {
+            if (preg_match_all('/<(?:[A-Za-z_][\w.-]*:)?row\b[^>]*>(.*?)<\/(?:[A-Za-z_][\w.-]*:)?row>/s', $xml, $rowMatches)) {
                 foreach ($rowMatches[1] as $rowXml) {
                     $row = [];
-                    if (preg_match_all('/<c\b([^>]*)>(.*?)<\/c>/s', $rowXml, $cells, PREG_SET_ORDER)) {
+                    if (preg_match_all('/<(?:[A-Za-z_][\w.-]*:)?c\b([^>]*?)(?:\/>|>(.*?)<\/(?:[A-Za-z_][\w.-]*:)?c>)/s', $rowXml, $cells, PREG_SET_ORDER)) {
                         foreach ($cells as $cell) {
                             $attrs = $cell[1];
-                            $body = $cell[2];
+                            $body = (string) ($cell[2] ?? '');
                             preg_match('/\br="([A-Z]+)[0-9]+"/', $attrs, $rm);
                             $column = self::columnIndex($rm[1] ?? 'A');
                             $type = '';
@@ -46,10 +46,10 @@ final class Xlsx
                             }
                             $value = '';
                             if ($type === 'inlineStr') {
-                                if (preg_match_all('/<t\b[^>]*>(.*?)<\/t>/s', $body, $tmatches)) {
+                                if (preg_match_all('/<(?:[A-Za-z_][\w.-]*:)?t\b[^>]*>(.*?)<\/(?:[A-Za-z_][\w.-]*:)?t>/s', $body, $tmatches)) {
                                     $value = self::xmlText(implode('', $tmatches[1]));
                                 }
-                            } elseif (preg_match('/<v\b[^>]*>(.*?)<\/v>/s', $body, $vm)) {
+                            } elseif (preg_match('/<(?:[A-Za-z_][\w.-]*:)?v\b[^>]*>(.*?)<\/(?:[A-Za-z_][\w.-]*:)?v>/s', $body, $vm)) {
                                 $raw = self::xmlText($vm[1]);
                                 $value = $type === 's' ? ($shared[(int) $raw] ?? '') : $raw;
                             }
@@ -61,6 +61,16 @@ final class Xlsx
                         $normalized = [];
                         for ($i = 0; $i <= $last; $i++) {
                             $normalized[] = (string) ($row[$i] ?? '');
+                        }
+                        $hasValue = false;
+                        foreach ($normalized as $cellValue) {
+                            if (trim($cellValue) !== '') {
+                                $hasValue = true;
+                                break;
+                            }
+                        }
+                        if (!$hasValue) {
+                            continue;
                         }
                         $rows[] = $normalized;
                         if (count($rows) >= $maxRows) {

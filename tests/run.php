@@ -172,6 +172,33 @@ try {
         $inventoryPage->status === 200 && str_contains($inventoryPage->body, 'data-target-id="'.(string)$appCensusItem['id'].'"'),
         'Target pencacahan menggunakan ID inventory utama, bukan physical_unit_id'
     );
+    $assert(str_contains($inventoryPage->body, '/templates/template_upload_btd.xlsx?v=1.0.6'), 'Tautan template BTD mengarah ke file publik yang tersedia');
+    $assetScript = (string) file_get_contents($basePath.'/public/assets/app.js');
+    $assert(str_contains($assetScript, '/templates/template_upload_bdn.xlsx?v=1.0.6'), 'Konfigurasi template BDN mengarah ke file publik yang tersedia');
+    foreach (['template_upload_btd.xlsx' => 'BTD', 'template_upload_bdn.xlsx' => 'BDN'] as $templateFile => $templateType) {
+        $templatePath = $basePath.'/public/templates/'.$templateFile;
+        $compatibilityPath = $basePath.'/public/assets/templates/'.$templateFile;
+        $templateRows = Xlsx::read($templatePath, 5);
+        $nonBlankTemplateRows = array_values(array_filter($templateRows, static fn(array $row): bool => count(array_filter($row, static fn($value): bool => trim((string)$value) !== '')) > 0));
+        $assert(
+            is_file($templatePath)
+            && is_file($compatibilityPath)
+            && hash_file('sha256', $templatePath) === hash_file('sha256', $compatibilityPath)
+            && count($nonBlankTemplateRows) === 2,
+            'Template '.$templateType.' tersedia identik pada URL utama dan kompatibilitas serta hanya memiliki satu baris contoh'
+        );
+        $beforeImport = (new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents'))->countInventory(['include_inactive' => true]);
+        $importResponse = $app->handle(new Request('POST', '/inventory/import', [], [
+            '_csrf' => $adminSession['CSRF'], 'item_type' => $templateType, 'return_to' => '/inventory',
+        ], [
+            'excel_file' => [
+                'name' => $templateFile, 'tmp_name' => $templatePath, 'size' => filesize($templatePath),
+                'error' => UPLOAD_ERR_OK, 'type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ],
+        ], ['accept' => 'text/html']));
+        $afterImport = (new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents'))->countInventory(['include_inactive' => true]);
+        $assert($importResponse->status === 303 && str_contains((string)($importResponse->headers['Location'] ?? ''), 'berhasil') && $afterImport === $beforeImport + 1, 'Template '.$templateType.' konsisten dengan parser dan berhasil diimpor end-to-end');
+    }
     $censusPayload = [[
         'target_id' => (string)$appCensusItem['id'],
         'load_type' => 'FCL',

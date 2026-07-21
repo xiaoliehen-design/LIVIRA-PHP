@@ -1,6 +1,6 @@
 # LIVIRA PHP
 
-**Rilis saat ini: 1.0.5**
+**Rilis saat ini: 1.0.6**
 
 **LIVIRA — Layanan Inventori, Verifikasi, dan Integrasi** dalam implementasi PHP 8.2+ dengan Supabase sebagai Auth, PostgreSQL/API, RPC, dan Storage.
 
@@ -16,7 +16,7 @@ Paket ini adalah aplikasi **PHP-only**. Tidak ada source Go, `go.mod`, `go.sum`,
 - Action pemindahan, pemberitahuan, pencacahan multi-uraian per kontainer, request/penelitian PFPD, penetapan/peruntukan BMMN, pengeluaran, dan bongkar/muat tanpa mengubah status barang.
 - Proses lelang, pemusnahan, hibah/PSP, pengalihan hasil lelang, history, validasi transisi status, serta hasil lelang per ND penjadwalan.
 - Rekonsiliasi fisik serta perubahan data barang dengan nilai sebelum/sesudah dan audit.
-- Upload Excel massal, template Excel, upload dokumen private Supabase Storage, pencarian, pagination, notifikasi, dan ekspor CSV/XLS/XLSX.
+- Upload Excel massal BTD/BDN/barang titipan, template Excel yang konsisten dengan importer, upload dokumen private Supabase Storage, pencarian, pagination, notifikasi, dan ekspor CSV/XLS/XLSX.
 - Parameter sistem dan TPP yang dapat dikelola administrator.
 
 ## Arsitektur
@@ -68,7 +68,7 @@ Buka `http://127.0.0.1:8080`.
 ## Menggunakan Supabase LIVIRA yang sekarang
 
 Gunakan project Supabase yang sama. Tidak perlu memindahkan data, Auth user, Storage, RPC, atau menjalankan reset database.
-Rilis 1.0.5 sudah menggunakan kolom view `disposition_details.inventory_item_type` yang tersedia pada setup database LIVIRA; tidak memerlukan migration tambahan.
+Rilis 1.0.6 menggunakan kolom view `disposition_details.inventory_item_type` yang tersedia pada setup database LIVIRA dan memperbaiki template upload BTD/BDN; tidak memerlukan migration tambahan.
 
 ```env
 APP_ENV=production
@@ -123,7 +123,9 @@ Validasi mencakup:
 - kernel PHP, health check, halaman login, dan pemutusan sesi logout;
 - verifikasi bahwa paket tidak mengandung source/runtime Go;
 - pengujian regresi tombol logout dan idle logout;
-- pengujian form pencacahan tanpa `inventory_ids[]`, target inventory utama, dan penyimpanan multi-uraian.
+- pengujian form pencacahan tanpa `inventory_ids[]`, target inventory utama, dan penyimpanan multi-uraian;
+- pengujian tautan unduhan template BTD/BDN pada path utama dan kompatibilitas;
+- pengujian parser XLSX, satu baris contoh, serta import BTD dan BDN secara end-to-end.
 
 ## Keamanan produksi
 
