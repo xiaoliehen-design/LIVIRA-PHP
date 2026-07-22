@@ -259,7 +259,50 @@ final class App
             return$this->back($r,'Hasil pencacahan '.count($prepared).' target berhasil disimpan pada '.$totalRows.' uraian barang.','/inventory');
         }
         if($code==='pindah_bongkar_kontainer'){
-            $payload=$this->jsonArray($r->input('container_relocation_json'));foreach($payload as $target)$this->store->relocateLoad((string)($target['target_id']??$target['inventory_id']??($ids[0]??'')),(array)($target['allocations']??[$target]),$base);return$this->back($r,'Bongkar/muat kontainer berhasil disimpan.','/inventory');
+            $payload=$this->jsonObject($r->input('container_relocation_json'));
+            if(!$payload)throw new ApiException('Pilih target bongkar/muat dan lengkapi tujuan kontainernya.',422);
+            $mode='';$operations=[];
+            if(array_is_list($payload))$operations=$payload;
+            elseif(isset($payload['operations'])&&is_array($payload['operations'])){$mode=strtolower(trim((string)($payload['mode']??'')));$operations=array_values($payload['operations']);}
+            elseif(isset($payload['inventory_id'])||isset($payload['target_id']))$operations=[$payload];
+            if($mode!==''&&!in_array($mode,['bongkar','muat'],true))throw new ApiException('Mode bongkar/muat tidak valid.',422);
+            if(!$operations||count($operations)>100)throw new ApiException('Pilih minimal satu target bongkar/muat yang valid.',422);
+            $processed=0;$seen=[];
+            foreach($operations as $operation){
+                if(!is_array($operation))throw new ApiException('Data target bongkar/muat tidak valid.',422);
+                $targetId=$this->inventoryIdentifier($operation['inventory_id']??$operation['target_id']??'','Target bongkar/muat');
+                if(isset($seen[$targetId]))throw new ApiException('Barang yang sama tidak boleh diproses dua kali dalam satu action.',422);
+                $seen[$targetId]=true;
+                $item=$this->accessibleInventory($r,$targetId);
+                $sourceLoad=strtoupper(trim((string)($item['load_type']??'')));
+                if($mode==='bongkar'&&$sourceLoad!=='FCL')throw new ApiException('Mode bongkar hanya dapat digunakan untuk sumber FCL.',422);
+                if($mode==='muat'&&$sourceLoad!=='LCL')throw new ApiException('Mode muat hanya dapat digunakan untuk sumber LCL.',422);
+                $allocations=$operation['allocations']??[];
+                if(is_array($allocations)&&!array_is_list($allocations))$allocations=[$allocations];
+                if(!is_array($allocations)||!$allocations||count($allocations)>20)throw new ApiException('Setiap barang harus memiliki 1 sampai 20 tujuan bongkar/muat.',422);
+                $prepared=[];$allocated=0.0;
+                foreach($allocations as $allocation){
+                    if(!is_array($allocation))throw new ApiException('Data tujuan bongkar/muat tidak valid.',422);
+                    $loadType=strtoupper(trim((string)($allocation['load_type']??'')));
+                    $quantity=$this->number($allocation['quantity']??0);
+                    if(!in_array($loadType,['FCL','LCL'],true)||$quantity<=0)throw new ApiException('Jenis penempatan dan kuantitas tujuan wajib diisi dengan benar.',422);
+                    $row=['load_type'=>$loadType,'quantity'=>$quantity,'container_no'=>'','container_size'=>'','estimated_volume_m3'=>0.0];
+                    if($loadType==='FCL'){
+                        $container=$this->normalizeContainerInput((string)($allocation['container_no']??''));
+                        $size=$this->normalizeContainerSizeInput((string)($allocation['container_size']??''));
+                        if($container===''||$size==='')throw new ApiException('Nomor atau ukuran kontainer tujuan tidak valid.',422);
+                        $row['container_no']=$container;$row['container_size']=$size;
+                    }else{
+                        $volume=$this->number($allocation['estimated_volume_m3']??0);
+                        if($volume<=0)throw new ApiException('Volume tujuan LCL wajib lebih dari 0 m³.',422);
+                        $row['estimated_volume_m3']=$volume;
+                    }
+                    $allocated+=$quantity;$prepared[]=$row;
+                }
+                if(abs($allocated-(float)($item['quantity']??0))>=0.005)throw new ApiException('Jumlah seluruh tujuan harus sama dengan kuantitas barang sumber.',422);
+                $this->store->relocateLoad($targetId,$prepared,$base);$processed++;
+            }
+            return$this->back($r,'Bongkar/muat kontainer berhasil disimpan untuk '.$processed.' uraian barang.','/inventory');
         }
         if($code==='penelitian_pfpd'){
             foreach($this->jsonArray($r->input('pfpd_results_json')) as $result){$this->store->addInventoryEvent((string)$result['inventory_id'],array_merge($base,$result,['goods_value'=>$this->money($result['goods_value']??0),'restriction_status'=>$result['is_restricted']??'tidak']));}return$this->back($r,'Hasil penelitian PFPD berhasil disimpan.','/inventory');
@@ -812,6 +855,23 @@ final class App
     private function values(mixed $v):array{if(is_array($v))return array_values(array_unique(array_filter(array_map(fn($x)=>trim((string)$x),$v))));$s=trim((string)$v);if($s==='')return[];return array_values(array_unique(array_filter(array_map('trim',preg_split('/[,\r\n]+/',$s)?:[]))));}
     private function jsonArray(mixed $v):array{$a=json_decode((string)$v,true);return is_array($a)?(array_is_list($a)?$a:[$a]):[];}
     private function jsonObject(mixed $v):array{$a=json_decode((string)$v,true);return is_array($a)?$a:[];}
+    private function inventoryIdentifier(mixed $value,string $label='ID inventory'):string
+    {
+        $id=trim((string)$value);
+        if($id==='')throw new ApiException($label.' tidak tersedia. Muat ulang halaman dan pilih barang kembali.',422);
+        if(!$this->config->demoMode&&!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$id))throw new ApiException($label.' tidak valid. Muat ulang halaman dan pilih barang kembali.',422);
+        return$id;
+    }
+    private function normalizeContainerInput(string $value):string
+    {
+        $compact=strtoupper(preg_replace('/[^A-Z0-9]/i','',$value)??'');
+        return preg_match('/^[A-Z]{4}[0-9]{7}$/',$compact)?$compact:'';
+    }
+    private function normalizeContainerSizeInput(string $value):string
+    {
+        $compact=strtoupper(str_replace(['’',"'",'"',' ','-'],'',trim($value)));
+        return match($compact){'20','20FT'=>'20','40','40FT'=>'40','40HC','40H','40HIGHCUBE'=>'40HC','45','45HC','45H','45HIGHCUBE'=>'45HC',default=>''};
+    }
     private function formMap(Request $r,array $keys):array{$out=[];foreach($keys as $key)$out[$key]=$r->input($key);return$out;}
     private function bool(mixed $v):bool{return filter_var($v,FILTER_VALIDATE_BOOL)||in_array(strtolower((string)$v),['1','ya','yes','on','sudah'],true);}
     private function number(mixed $v):float{$s=str_replace(',','.',preg_replace('/[^0-9,.-]/','',(string)$v));return is_numeric($s)?(float)$s:0;}

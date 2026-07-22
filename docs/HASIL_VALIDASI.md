@@ -39,3 +39,11 @@ Validasi lokal tidak menggunakan credential Supabase produksi. Karena itu, sebel
 - Apache front-controller test: `GET /login` = 200.
 - Apache front-controller test: `HEAD /` = 303 menuju login.
 - Apache static file test: `HEAD /assets/app.css` = 200.
+
+## Validasi tambahan v1.0.7
+
+- Total 50 pemeriksaan otomatis lulus.
+- Payload frontend `{mode, operations}` diuji melalui handler HTTP aplikasi.
+- Pindah kontainer FCL berhasil menyimpan nomor dan ukuran tujuan yang dinormalisasi.
+- Target kosong ditolak sebelum query UUID dikirim ke Supabase.
+- Tidak diperlukan SQL atau migration baru.

@@ -229,6 +229,35 @@ try {
     ));
     $assert(count($appCensusRows) === 2 && in_array('Uraian tambahan dari form', array_column($appCensusRows, 'description'), true), 'Handler HTTP menyimpan uraian baru sesuai jumlah baris pencacahan');
 
+    $relocationPayload = [
+        'mode' => 'bongkar',
+        'operations' => [[
+            'inventory_id' => (string)$appCensusItem['id'],
+            'allocations' => [[
+                'load_type' => 'FCL', 'container_no' => 'MOVE 765432-1', 'container_size' => "40'",
+                'estimated_volume_m3' => 0, 'quantity' => 4,
+            ]],
+        ]],
+    ];
+    $relocationResponse = $app->handle(new Request('POST', '/inventory/bulk-event', [], [
+        '_csrf' => $adminSession['CSRF'], 'event_code' => 'pindah_bongkar_kontainer',
+        'document_no' => 'BA-BONGKAR-001', 'document_date' => '2026-07-21',
+        'container_relocation_json' => json_encode($relocationPayload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+        'return_to' => '/inventory',
+    ], [], ['accept' => 'text/html']));
+    $relocationCheck = new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents');
+    $relocatedItem = $relocationCheck->getInventory((string)$appCensusItem['id']);
+    $assert($relocationResponse->status === 303 && str_contains((string)($relocationResponse->headers['Location'] ?? ''), 'Bongkar%2Fmuat'), 'Payload bongkar/muat berbentuk mode dan operations diproses tanpa ID UUID kosong');
+    $assert(($relocatedItem['container_no'] ?? '') === 'MOVE7654321' && ($relocatedItem['container_size'] ?? '') === '40', 'Pindah kontainer menyimpan nomor dan ukuran tujuan yang dinormalisasi');
+
+    $invalidRelocationResponse = $app->handle(new Request('POST', '/inventory/bulk-event', [], [
+        '_csrf' => $adminSession['CSRF'], 'event_code' => 'pindah_bongkar_kontainer',
+        'document_no' => 'BA-BONGKAR-INVALID', 'document_date' => '2026-07-21',
+        'container_relocation_json' => json_encode(['mode' => 'bongkar', 'operations' => [['inventory_id' => '', 'allocations' => []]]]),
+        'return_to' => '/inventory',
+    ], [], ['accept' => 'text/html']));
+    $assert($invalidRelocationResponse->status === 303 && str_contains((string)($invalidRelocationResponse->headers['Location'] ?? ''), 'Target%20bongkar%2Fmuat'), 'Target kosong ditolak oleh aplikasi sebelum query UUID dikirim ke Supabase');
+
     foreach (['lelang', 'musnah', 'hibah'] as $processType) {
         $pageResponse = $app->handle(new Request('GET', '/proses/'.$processType));
         $assert($pageResponse->status === 200 && !str_contains($pageResponse->body, 'Kesalahan'), 'Halaman proses '.$processType.' dapat dirender tanpa query kolom Supabase yang salah');

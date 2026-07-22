@@ -1,6 +1,6 @@
 # LIVIRA PHP
 
-**Rilis saat ini: 1.0.6**
+**Rilis saat ini: 1.0.7**
 
 **LIVIRA — Layanan Inventori, Verifikasi, dan Integrasi** dalam implementasi PHP 8.2+ dengan Supabase sebagai Auth, PostgreSQL/API, RPC, dan Storage.
 
@@ -68,7 +68,7 @@ Buka `http://127.0.0.1:8080`.
 ## Menggunakan Supabase LIVIRA yang sekarang
 
 Gunakan project Supabase yang sama. Tidak perlu memindahkan data, Auth user, Storage, RPC, atau menjalankan reset database.
-Rilis 1.0.6 menggunakan kolom view `disposition_details.inventory_item_type` yang tersedia pada setup database LIVIRA dan memperbaiki template upload BTD/BDN; tidak memerlukan migration tambahan.
+Rilis 1.0.7 memperbaiki parser payload bongkar/muat kontainer agar struktur `mode` dan `operations` diproses dengan benar, memvalidasi ID target sebelum query Supabase, serta tetap menggunakan skema/RPC LIVIRA yang sudah ada tanpa migration tambahan.
 
 ```env
 APP_ENV=production

@@ -54,3 +54,11 @@ Gunakan akun dan database staging/salinan bila memungkinkan.
 - File tersimpan pada bucket yang benar.
 - Download berhasil dan hash/ukuran file konsisten.
 - Pengguna tanpa izin tidak dapat mengunduh file dengan menebak ID.
+
+## Regresi bongkar/muat v1.0.7
+
+- Pilih satu kontainer FCL, ubah ke nomor kontainer tujuan yang berbeda, lalu simpan.
+- Pastikan tidak muncul error `22P02` atau UUID kosong.
+- Pastikan seluruh uraian yang dipilih berpindah sesuai alokasi dan jumlah alokasi sama dengan jumlah sumber.
+- Uji muat LCL ke FCL dan bongkar FCL ke LCL.
+- Pastikan status proses barang sebelumnya tidak berubah akibat bongkar/muat.
