@@ -1,6 +1,6 @@
 # LIVIRA PHP
 
-**Rilis saat ini: 1.0.7**
+**Rilis saat ini: 1.0.8**
 
 **LIVIRA — Layanan Inventori, Verifikasi, dan Integrasi** dalam implementasi PHP 8.2+ dengan Supabase sebagai Auth, PostgreSQL/API, RPC, dan Storage.
 
@@ -68,7 +68,7 @@ Buka `http://127.0.0.1:8080`.
 ## Menggunakan Supabase LIVIRA yang sekarang
 
 Gunakan project Supabase yang sama. Tidak perlu memindahkan data, Auth user, Storage, RPC, atau menjalankan reset database.
-Rilis 1.0.7 memperbaiki parser payload bongkar/muat kontainer agar struktur `mode` dan `operations` diproses dengan benar, memvalidasi ID target sebelum query Supabase, serta tetap menggunakan skema/RPC LIVIRA yang sudah ada tanpa migration tambahan.
+Rilis 1.0.8 menambahkan Blok TPP opsional pada pemindahan, menampilkannya pada detail, perubahan data, dan laporan, serta menyediakan Nomor/Tanggal BL opsional untuk BDN dan Barang Titipan berikut template Excel yang konsisten. Skema Supabase yang sudah ada tetap digunakan tanpa migration tambahan.
 
 ```env
 APP_ENV=production
@@ -124,8 +124,10 @@ Validasi mencakup:
 - verifikasi bahwa paket tidak mengandung source/runtime Go;
 - pengujian regresi tombol logout dan idle logout;
 - pengujian form pencacahan tanpa `inventory_ids[]`, target inventory utama, dan penyimpanan multi-uraian;
-- pengujian tautan unduhan template BTD/BDN pada path utama dan kompatibilitas;
-- pengujian parser XLSX, satu baris contoh, serta import BTD dan BDN secara end-to-end.
+- pengujian tautan unduhan template BTD/BDN/Barang Titipan pada path utama dan kompatibilitas;
+- pengujian parser XLSX, satu baris contoh, serta import BTD, BDN, dan Barang Titipan secara end-to-end;
+- pengujian Blok TPP pada pemindahan, detail, perubahan data, laporan layar, CSV, dan XLSX;
+- pengujian BL opsional pada form serta template BDN dan Barang Titipan.
 
 ## Keamanan produksi
 
@@ -141,3 +143,8 @@ Validasi mencakup:
 ## Catatan pengujian produksi
 
 Paket telah diuji secara lokal dengan PHP dan demo store. Koneksi live ke Supabase produksi tidak dapat diuji tanpa credential milik Anda. Lakukan deploy staging terlebih dahulu dan jalankan checklist pada [docs/VALIDASI_STAGING.md](docs/VALIDASI_STAGING.md) sebelum memindahkan domain produksi.
+
+
+## Revisi 1.0.8
+
+Pemindahan mendukung blok TPP opsional; laporan, detail, dan perubahan data menampilkan blok TPP. BL opsional tersedia pada BDN dan barang titipan, termasuk template Excel.

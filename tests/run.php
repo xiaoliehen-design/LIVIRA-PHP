@@ -156,6 +156,12 @@ try {
         'goods_condition' => 'Baik', 'goods_value' => 300000, 'load_type' => 'LCL', 'estimated_volume_m3' => 1,
         'facility_id' => 'tpp-transporindo', 'actor' => 'Test Runner',
     ]);
+    $moveItem = $appSeed->createInventory([
+        'type' => 'BDN', 'determination_no' => 'BDN-PINDAH-001', 'determination_date' => '2026-07-21',
+        'description' => 'Barang uji pemindahan blok', 'item_kind' => 'Barang Umum', 'quantity' => 5, 'unit' => 'KOLI',
+        'goods_condition' => 'Baik', 'goods_value' => 100000, 'load_type' => 'LCL', 'estimated_volume_m3' => 2,
+        'origin_warehouse' => 'TPS JICT', 'actor' => 'Test Runner',
+    ]);
     $app = new App($appBase, $config);
     $health = $app->handle(new Request('GET', '/healthz'));
     $assert($health->status === 200 && str_contains($health->body, 'LIVIRA PHP'), 'Kernel aplikasi PHP melayani health check');
@@ -172,13 +178,20 @@ try {
         $inventoryPage->status === 200 && str_contains($inventoryPage->body, 'data-target-id="'.(string)$appCensusItem['id'].'"'),
         'Target pencacahan menggunakan ID inventory utama, bukan physical_unit_id'
     );
-    $assert(str_contains($inventoryPage->body, '/templates/template_upload_btd.xlsx?v=1.0.6'), 'Tautan template BTD mengarah ke file publik yang tersedia');
+    $assert(str_contains($inventoryPage->body, '/templates/template_upload_btd.xlsx?v=1.0.8'), 'Tautan template BTD mengarah ke file publik yang tersedia');
     $assetScript = (string) file_get_contents($basePath.'/public/assets/app.js');
-    $assert(str_contains($assetScript, '/templates/template_upload_bdn.xlsx?v=1.0.6'), 'Konfigurasi template BDN mengarah ke file publik yang tersedia');
-    foreach (['template_upload_btd.xlsx' => 'BTD', 'template_upload_bdn.xlsx' => 'BDN'] as $templateFile => $templateType) {
+    $assert(str_contains($assetScript, '/templates/template_upload_bdn.xlsx?v=1.0.8'), 'Konfigurasi template BDN mengarah ke file publik yang tersedia');
+    $assert(str_contains($assetScript, '/templates/template_upload_barang_titipan.xlsx?v=1.0.8'), 'Konfigurasi template Barang Titipan mengarah ke file publik yang tersedia');
+    $assert(str_contains($inventoryPage->body, 'name="target_location"') && str_contains($inventoryPage->body, 'Blok TPP'), 'Form pemindahan menyediakan isian Blok TPP opsional');
+    $assert(str_contains($inventoryPage->body, 'data-bl-optional-mark'), 'Form BDN dan Barang Titipan menyediakan BL opsional');
+    foreach (['template_upload_btd.xlsx' => 'BTD', 'template_upload_bdn.xlsx' => 'BDN', 'template_upload_barang_titipan.xlsx' => 'TITIPAN'] as $templateFile => $templateType) {
         $templatePath = $basePath.'/public/templates/'.$templateFile;
         $compatibilityPath = $basePath.'/public/assets/templates/'.$templateFile;
         $templateRows = Xlsx::read($templatePath, 5);
+        $headersLower = array_map(static fn($value): string => mb_strtolower(trim((string)$value)), $templateRows[0] ?? []);
+        if (in_array($templateType, ['BDN', 'TITIPAN'], true)) {
+            $assert(in_array('nomor bl (opsional)', $headersLower, true) && in_array('tanggal bl (opsional)', $headersLower, true), 'Template '.$templateType.' memuat Nomor BL dan Tanggal BL opsional');
+        }
         $nonBlankTemplateRows = array_values(array_filter($templateRows, static fn(array $row): bool => count(array_filter($row, static fn($value): bool => trim((string)$value) !== '')) > 0));
         $assert(
             is_file($templatePath)
@@ -199,6 +212,56 @@ try {
         $afterImport = (new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents'))->countInventory(['include_inactive' => true]);
         $assert($importResponse->status === 303 && str_contains((string)($importResponse->headers['Location'] ?? ''), 'berhasil') && $afterImport === $beforeImport + 1, 'Template '.$templateType.' konsisten dengan parser dan berhasil diimpor end-to-end');
     }
+
+    foreach ([
+        ['template_upload_bdn.xlsx', 'BDN', 3, 4],
+        ['template_upload_barang_titipan.xlsx', 'TITIPAN', 4, 5],
+    ] as [$templateFile, $templateType, $blIndex, $blDateIndex]) {
+        $templateRows = Xlsx::read($basePath.'/public/templates/'.$templateFile, 3);
+        $headerRow = (array)($templateRows[0] ?? []);
+        $dataRow = (array)($templateRows[1] ?? []);
+        $dataRow[0] = (string)($dataRow[0] ?? $templateType.'-TEST').'-TANPA-BL';
+        $dataRow[$blIndex] = '';
+        $dataRow[$blDateIndex] = '';
+        $blankBLPath = $temp.'/'.strtolower($templateType).'-tanpa-bl.xlsx';
+        file_put_contents($blankBLPath, Xlsx::write($headerRow, [$dataRow], 'Upload '.$templateType));
+        $beforeBlankImport = (new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents'))->countInventory(['include_inactive' => true]);
+        $blankImportResponse = $app->handle(new Request('POST', '/inventory/import', [], [
+            '_csrf' => $adminSession['CSRF'], 'item_type' => $templateType, 'return_to' => '/inventory',
+        ], [
+            'excel_file' => [
+                'name' => basename($blankBLPath), 'tmp_name' => $blankBLPath, 'size' => filesize($blankBLPath),
+                'error' => UPLOAD_ERR_OK, 'type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ],
+        ], ['accept' => 'text/html']));
+        $afterBlankImport = (new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents'))->countInventory(['include_inactive' => true]);
+        $assert($blankImportResponse->status === 303 && $afterBlankImport === $beforeBlankImport + 1, 'Import '.$templateType.' menerima Nomor BL dan Tanggal BL kosong sebagai field opsional');
+    }
+
+    $moveResponse = $app->handle(new Request('POST', '/inventory/bulk-event', [], [
+        '_csrf' => $adminSession['CSRF'], 'event_code' => 'pemindahan',
+        'document_no' => 'BA-PINDAH-001', 'document_date' => '2026-07-21',
+        'inventory_ids' => [(string)$moveItem['id']], 'target_facility_id' => 'tpp-trikarya',
+        'target_location' => 'Blok Z-09', 'return_to' => '/inventory',
+    ], [], ['accept' => 'text/html']));
+    $moveCheck = new DemoStore($appBase.'/storage/demo-data.json', $appBase.'/storage/demo-documents');
+    $movedItem = $moveCheck->getInventory((string)$moveItem['id']);
+    $assert($moveResponse->status === 303 && ($movedItem['facility_name'] ?? '') === 'TPP Trikarya' && ($movedItem['location'] ?? '') === 'Blok Z-09', 'Pemindahan menyimpan TPP tujuan dan Blok TPP opsional secara terpisah');
+
+    $reportPage = $app->handle(new Request('GET', '/pelaporan', ['preset' => 'active_tpp', 'page_size' => 100]));
+    $assert($reportPage->status === 200 && str_contains($reportPage->body, '<th>TPP</th><th>Blok TPP</th>') && str_contains($reportPage->body, 'Blok Z-09'), 'Laporan barang aktif per TPP menampilkan kolom Blok TPP di sebelah nama TPP');
+    $reportCSV = $app->handle(new Request('GET', '/pelaporan.csv', ['preset' => 'active_tpp']));
+    $assert($reportCSV->status === 200 && str_contains($reportCSV->body, 'TPP') && str_contains($reportCSV->body, 'Blok TPP') && str_contains($reportCSV->body, 'Blok Z-09'), 'Ekspor laporan barang aktif per TPP menyertakan Blok TPP');
+    $reportXLSX = $app->handle(new Request('GET', '/pelaporan.xlsx', ['preset' => 'active_tpp']));
+    $reportXLSXPath = $temp.'/report-active-tpp.xlsx';
+    file_put_contents($reportXLSXPath, $reportXLSX->body);
+    $reportXLSXRows = Xlsx::read($reportXLSXPath, 5);
+    $assert($reportXLSX->status === 200 && in_array('TPP', (array)($reportXLSXRows[0] ?? []), true) && in_array('Blok TPP', (array)($reportXLSXRows[0] ?? []), true), 'Ekspor XLSX barang aktif per TPP menyertakan kolom Blok TPP');
+    $detailResponse = $app->handle(new Request('GET', '/api/inventory/'.(string)$moveItem['id']));
+    $assert($detailResponse->status === 200 && str_contains($detailResponse->body, 'Blok Z-09'), 'API detail barang memuat Blok TPP untuk tampilan detail');
+    $assert(tpl_change_field('location') === 'Blok TPP', 'Perubahan data menampilkan label Blok TPP');
+    $assert(tpl_tpp_block(['at_tpp' => true, 'location' => 'TPP Trikarya', 'facility_name' => 'TPP Trikarya', 'location_status' => 'TPP Trikarya']) === '', 'Nilai lokasi lama yang sama dengan nama TPP tidak ditampilkan sebagai Blok TPP');
+
     $censusPayload = [[
         'target_id' => (string)$appCensusItem['id'],
         'load_type' => 'FCL',

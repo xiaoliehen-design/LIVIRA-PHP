@@ -1,6 +1,6 @@
 # Hasil Validasi LIVIRA PHP
 
-Tanggal validasi paket: 21 Juli 2026.
+Tanggal validasi paket: 22 Juli 2026.
 
 ## Pemeriksaan yang lulus
 
@@ -47,3 +47,15 @@ Validasi lokal tidak menggunakan credential Supabase produksi. Karena itu, sebel
 - Pindah kontainer FCL berhasil menyimpan nomor dan ukuran tujuan yang dinormalisasi.
 - Target kosong ditolak sebelum query UUID dikirim ke Supabase.
 - Tidak diperlukan SQL atau migration baru.
+
+## Validasi tambahan v1.0.8
+
+- Total 66 pemeriksaan otomatis lulus.
+- Pemindahan TPS ke TPP diuji menyimpan `facility_name` dan Blok TPP (`location`) secara terpisah.
+- Laporan barang aktif per TPP pada layar, CSV, dan XLSX diuji memuat kolom `TPP` dan `Blok TPP` berdampingan.
+- Detail barang dan audit perubahan data diuji menampilkan label serta nilai Blok TPP.
+- Form manual BDN dan Barang Titipan diuji menyediakan Nomor BL dan Tanggal BL opsional.
+- Template BDN dan Barang Titipan diuji memiliki header BL opsional, satu baris contoh, salinan URL kompatibilitas identik, berhasil diimpor end-to-end, dan tetap menerima BL kosong.
+- Rendering laporan diperbaiki menggunakan penggabungan data yang benar agar baris laporan tidak tertimpa oleh nilai awal kosong.
+- Data lama dengan nilai `location` yang sama dengan nama TPP tidak ditampilkan keliru sebagai Blok TPP.
+- Tidak diperlukan migration SQL atau perubahan environment.

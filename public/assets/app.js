@@ -384,9 +384,9 @@
   const inventoryImportTitle = $("[data-import-title]", createInventoryModal);
   const inventoryTemplateLink = $("[data-import-template-link]", createInventoryModal);
   const inventoryTemplateConfig = {
-    BTD: { href: "/templates/template_upload_btd.xlsx?v=1.0.6", label: "Unduh template BTD", title: "Upload banyak Pencatatan BTD" },
-    BDN: { href: "/templates/template_upload_bdn.xlsx?v=1.0.6", label: "Unduh template BDN", title: "Upload banyak Penetapan BDN" },
-    TITIPAN: { href: "/templates/template_upload_barang_titipan.xlsx?v=1.0.6", label: "Unduh template Barang Titipan", title: "Upload banyak Barang Titipan" },
+    BTD: { href: "/templates/template_upload_btd.xlsx?v=1.0.8", label: "Unduh template BTD", title: "Upload banyak Pencatatan BTD" },
+    BDN: { href: "/templates/template_upload_bdn.xlsx?v=1.0.8", label: "Unduh template BDN", title: "Upload banyak Penetapan BDN" },
+    TITIPAN: { href: "/templates/template_upload_barang_titipan.xlsx?v=1.0.8", label: "Unduh template Barang Titipan", title: "Upload banyak Barang Titipan" },
   };
 
   function setInventoryEntryMode(mode) {
@@ -429,7 +429,7 @@
       if (title) title.textContent = isTitipan ? "Pemasukan barang titipan kantor/unit lain" : isBTD ? "Pencatatan BTD" : `Penetapan ${kind}`;
       if (description) description.textContent = isTitipan ? "Catat barang titipan sesuai dokumen dasar pemasukan dan kondisi lokasi sebenarnya." : "Barang baru secara default dicatat masih berada di TPS.";
       if (documentTitle) documentTitle.textContent = isTitipan ? "Dokumen dasar pemasukan" : isBTD ? "Dokumen pencatatan BTD" : "Dokumen penetapan";
-      if (manifestTitle) manifestTitle.textContent = isTitipan ? "Manifest dan muatan" : isBTD ? "BL, tanggal BL, manifest, muatan, dan TPS asal" : "Manifest, muatan, dan TPS asal";
+      if (manifestTitle) manifestTitle.textContent = isTitipan ? "BL opsional, manifest, dan muatan" : isBTD ? "BL, tanggal BL, manifest, muatan, dan TPS asal" : "BL opsional, manifest, muatan, dan TPS asal";
       if (noLabel) noLabel.textContent = isTitipan ? "Nomor dokumen dasar pemasukan" : isBTD ? "Nomor BTD" : "Nomor penetapan";
       if (dateLabel) dateLabel.textContent = isTitipan ? "Tanggal dokumen" : isBTD ? "Tanggal BTD" : "Tanggal penetapan";
       if (submit) submit.textContent = isTitipan ? "Simpan pemasukan" : isBTD ? "Simpan pencatatan" : "Simpan penetapan";
@@ -470,18 +470,24 @@
       const blInput = $("[data-bl-input]", createInventoryModal);
       const blDateField = $("[data-bl-date-field]", createInventoryModal);
       const blDateInput = $("[data-bl-date-input]", createInventoryModal);
-      if (blField) blField.hidden = !isBTD;
-      if (blDateField) blDateField.hidden = !isBTD;
+      const blRequiredMark = $("[data-bl-required-mark]", createInventoryModal);
+      const blOptionalMark = $("[data-bl-optional-mark]", createInventoryModal);
+      const blDateRequiredMark = $("[data-bl-date-required-mark]", createInventoryModal);
+      const blDateOptionalMark = $("[data-bl-date-optional-mark]", createInventoryModal);
+      if (blField) blField.hidden = false;
+      if (blDateField) blDateField.hidden = false;
       if (blInput) {
-        blInput.disabled = !isBTD;
+        blInput.disabled = false;
         blInput.required = isBTD;
-        if (!isBTD) blInput.value = "";
       }
       if (blDateInput) {
-        blDateInput.disabled = !isBTD;
+        blDateInput.disabled = false;
         blDateInput.required = isBTD;
-        if (!isBTD) blDateInput.value = "";
       }
+      if (blRequiredMark) blRequiredMark.hidden = !isBTD;
+      if (blDateRequiredMark) blDateRequiredMark.hidden = !isBTD;
+      if (blOptionalMark) blOptionalMark.hidden = isBTD;
+      if (blDateOptionalMark) blDateOptionalMark.hidden = isBTD;
       const locationChoice = $(`input[name="at_tpp"][value="${isTitipan ? "sudah" : "belum"}"]`, createInventoryModal);
       if (locationChoice) locationChoice.checked = true;
       resetContainerEntries();
@@ -838,6 +844,17 @@
     return node;
   }
 
+  function inventoryBlockLocation(item) {
+    if (!item?.at_tpp) return "";
+    const location = String(item.location || "").trim();
+    const facility = String(item.facility_name || "").trim();
+    const status = String(item.location_status || "").trim();
+    if (!location) return "";
+    const normalized = location.toLocaleLowerCase("id-ID");
+    if ((facility && normalized === facility.toLocaleLowerCase("id-ID")) || (status && normalized === status.toLocaleLowerCase("id-ID"))) return "";
+    return location;
+  }
+
   function renderInventoryDetail(item) {
     if (!detailModal || !detailContent) return;
     const isTitipan = item.item_type === "TITIPAN";
@@ -864,7 +881,7 @@
       );
     }
     fields.push(
-      ...(item.item_type === "BTD" ? [detailField("Nomor BL", item.bl_no), detailField("Tanggal BL", formatDate(item.bl_date))] : []),
+      ...((item.item_type === "BTD" || item.bl_no || item.bl_date) ? [detailField("Nomor BL", item.bl_no), detailField("Tanggal BL", formatDate(item.bl_date))] : []),
       detailField("Nomor manifest / pos", [item.manifest_no, item.manifest_position].filter(Boolean).join(" / ")),
       detailField("Tanggal manifest", formatDate(item.manifest_date)),
       detailField("Jenis muatan", item.load_type || "—"),
@@ -878,7 +895,8 @@
       detailField("Detail jumlah barang", item.quantity_detail, true),
       detailField("Nilai barang", formatMoney(item.goods_value)),
       detailField("Status lokasi", item.location_status),
-      detailField("Lokasi", item.location),
+      detailField("Blok TPP", inventoryBlockLocation(item)),
+      ...(!item.at_tpp ? [detailField("Lokasi fisik / TPS", item.location)] : []),
     );
     if (!isTitipan) fields.push(detailField("TPS asal", item.origin_warehouse));
     fields.push(
@@ -2303,7 +2321,7 @@
   function populateCorrectionItem(item) {
     $$('[data-correction-field]', correctionEditor).forEach((field) => {
       const key = field.dataset.correctionField;
-      const value = item[key];
+      const value = key === 'location' ? inventoryBlockLocation(item) : item[key];
       if (field.dataset.correctionCheckbox !== undefined) field.checked = !!value;
       else if (field.dataset.correctionDate !== undefined) field.value = dateInputValue(value);
       else field.value = value ?? '';

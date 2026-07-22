@@ -28,3 +28,11 @@ Path kompatibilitas lama tetap tersedia pada `/assets/templates/`.
 2. Klik tombol unduh template dan pastikan browser menerima file `.xlsx`.
 3. Isi atau pertahankan satu baris contoh untuk pengujian pada data staging.
 4. Upload dan pastikan notifikasi sukses muncul serta jumlah inventory bertambah.
+
+
+## Penyesuaian versi 1.0.8
+
+- Template BDN mempunyai kolom **Nomor BL** dan **Tanggal BL** yang bersifat opsional.
+- Template Barang Titipan mempunyai kolom **Nomor BL** dan **Tanggal BL** yang bersifat opsional.
+- Kolom **Blok/Gudang di TPP** tetap opsional dan disimpan sebagai Blok TPP.
+- Untuk beberapa uraian pada kontainer yang sama, Nomor BL, TPP, dan Blok TPP harus konsisten.

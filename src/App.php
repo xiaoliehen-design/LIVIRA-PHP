@@ -220,7 +220,7 @@ final class App
         $ids=$bulk?$this->values($r->input('inventory_ids')):[(string)$r->route('id')];
         $structuredActions=['penelitian_pfpd','pencacahan','pindah_bongkar_kontainer'];
         if(!$ids&&!in_array($code,$structuredActions,true))throw new ApiException('Pilih minimal satu barang.',422);
-        $base=$this->formMap($r,['document_no','document_date','notes','target_facility_id','allocation_type','exit_type']);$base['actor']=$this->actor($r);$base['document_id']=$this->optionalDocument($r);$base['code']=$code;
+        $base=$this->formMap($r,['document_no','document_date','notes','target_facility_id','target_location','allocation_type','exit_type']);$base['actor']=$this->actor($r);$base['document_id']=$this->optionalDocument($r);$base['code']=$code;
         if($code==='pencacahan'){
             $drafts=$this->jsonArray($r->input('census_results_json'));
             if(!$drafts||count($drafts)>100)throw new ApiException('Pilih minimal satu kontainer FCL atau satu barang LCL, lalu lengkapi hasil pencacahannya.',422);
@@ -454,25 +454,25 @@ final class App
         if($preset==='performance'){
             $performance=$this->performanceReport($r,(string)$r->query('date_from'),(string)$r->query('date_to'));
             $report=['Preset'=>'performance','Title'=>'Performa kinerja','Description'=>'Jumlah penyelesaian dan rata-rata waktu proses berdasarkan rentang tanggal selesai.','ExportURL'=>$performance['ExportURL'],'CSVExportURL'=>'','ExcelExportURL'=>$performance['ExportURL']];
-            return Response::html($this->view->render('reports',$common+['Report'=>$report,'ReportPerformance'=>true,'Performance'=>$performance,'ReportTotal'=>$performance['TotalCompleted'],'Pagination'=>$this->pagination($r,1,$size,$performance['TotalCompleted'])]));
+            return Response::html($this->view->render('reports',array_merge($common,['Report'=>$report,'ReportPerformance'=>true,'Performance'=>$performance,'ReportTotal'=>$performance['TotalCompleted'],'Pagination'=>$this->pagination($r,1,$size,$performance['TotalCompleted'])])));
         }
         if(in_array($preset,['reconciliation','data_correction'],true)){
             if(!Domain::can($this->session($r),'reconciliation.view'))throw new ApiException('Anda tidak memiliki hak akses laporan rekonsiliasi.',403);
             $records=$this->filterReconciliationsForSession($this->store->listReconciliations(),$this->session($r));[$regular,$corrections]=$this->splitReconciliations($records);
             if($preset==='reconciliation'){
                 $total=count($regular);$paged=array_slice($regular,($page-1)*$size,$size);$report=$this->reportOptions($r,$preset,'Rekap rekonsiliasi','Penambahan atau pengeluaran inventory berdasarkan perbandingan catatan aplikasi dan kondisi fisik di lapangan.');
-                return Response::html($this->view->render('reports',$common+['Report'=>$report,'ReportReconciliation'=>true,'Reconciliations'=>$paged,'ReportTotal'=>$total,'Pagination'=>$this->pagination($r,$page,$size,$total)]));
+                return Response::html($this->view->render('reports',array_merge($common,['Report'=>$report,'ReportReconciliation'=>true,'Reconciliations'=>$paged,'ReportTotal'=>$total,'Pagination'=>$this->pagination($r,$page,$size,$total)])));
             }
             $flat=$this->correctionRows($corrections);$total=count($flat);$paged=array_slice($flat,($page-1)*$size,$size);$report=$this->reportOptions($r,$preset,'Rekap perubahan data barang','Audit rinci data yang diubah beserta nilai sebelum, nilai sesudah, alasan, waktu, dan petugas.');
-            return Response::html($this->view->render('reports',$common+['Report'=>$report,'ReportDataCorrection'=>true,'DataCorrections'=>$corrections,'DataCorrectionRows'=>$paged,'ReportTotal'=>$total,'ReportTransactionTotal'=>count($corrections),'Pagination'=>$this->pagination($r,$page,$size,$total)]));
+            return Response::html($this->view->render('reports',array_merge($common,['Report'=>$report,'ReportDataCorrection'=>true,'DataCorrections'=>$corrections,'DataCorrectionRows'=>$paged,'ReportTotal'=>$total,'ReportTransactionTotal'=>count($corrections),'Pagination'=>$this->pagination($r,$page,$size,$total)])));
         }
         [$filter,$items,$report]=$this->reportData($r);
         if($preset==='btd'){
             $rows=$this->btdRows($items);$total=count($rows);$paged=array_slice($rows,($page-1)*$size,$size);
-            return Response::html($this->view->render('reports',$common+['Report'=>$report,'ReportBTD'=>true,'BTDReportRows'=>$paged,'ReportTotal'=>$total,'ReportTotalValue'=>array_sum(array_map(fn($i)=>(float)($i['goods_value']??0),$items)),'Pagination'=>$this->pagination($r,$page,$size,$total),'FacilityID'=>$filter['facility_id']??'','Status'=>$filter['status']??'']));
+            return Response::html($this->view->render('reports',array_merge($common,['Report'=>$report,'ReportBTD'=>true,'BTDReportRows'=>$paged,'ReportTotal'=>$total,'ReportTotalValue'=>array_sum(array_map(fn($i)=>(float)($i['goods_value']??0),$items)),'Pagination'=>$this->pagination($r,$page,$size,$total),'FacilityID'=>$filter['facility_id']??'','Status'=>$filter['status']??''])));
         }
         $total=count($items);$paged=array_slice($items,($page-1)*$size,$size);
-        return Response::html($this->view->render('reports',$common+['Report'=>$report,'Items'=>$paged,'ReportTotal'=>$total,'ReportActive'=>count(array_filter($items,fn($i)=>!empty($i['is_active']))),'ReportClosed'=>count(array_filter($items,fn($i)=>empty($i['is_active']))),'ReportTotalValue'=>array_sum(array_map(fn($i)=>(float)($i['goods_value']??0),$items)),'ReportAtTPP'=>count(array_filter($items,fn($i)=>!empty($i['at_tpp']))),'ReportTransactionTotal'=>$total,'Pagination'=>$this->pagination($r,$page,$size,$total),'FacilityID'=>$filter['facility_id']??'','InventoryType'=>$filter['type']??'','Status'=>$filter['status']??'']));
+        return Response::html($this->view->render('reports',array_merge($common,['Report'=>$report,'Items'=>$paged,'ReportTotal'=>$total,'ReportActive'=>count(array_filter($items,fn($i)=>!empty($i['is_active']))),'ReportClosed'=>count(array_filter($items,fn($i)=>empty($i['is_active']))),'ReportTotalValue'=>array_sum(array_map(fn($i)=>(float)($i['goods_value']??0),$items)),'ReportAtTPP'=>count(array_filter($items,fn($i)=>!empty($i['at_tpp']))),'ReportTransactionTotal'=>$total,'Pagination'=>$this->pagination($r,$page,$size,$total),'FacilityID'=>$filter['facility_id']??'','InventoryType'=>$filter['type']??'','Status'=>$filter['status']??''])));
     }
     private function exportReport(Request $r,string $format):Response
     {
@@ -495,8 +495,8 @@ final class App
             foreach($this->btdRows($items) as $x)$rows[]=array_values($x);
             return $this->tableExport($format,$headers,$rows,'livira-btd','Laporan BTD');
         }
-        $headers=['Jenis','Nomor Referensi','Nomor Penetapan/Dokumen','Tanggal Penetapan','Nomor BL','Tanggal BL','Nomor Manifest','Tanggal Manifest','Pos Manifest','Nomor Kontainer','Ukuran','Muatan','Uraian Barang','Jenis Barang','Kondisi','Jumlah','Satuan','Nilai Barang','TPS Asal','TPP','Status Lokasi','Status Barang','Status Inventory'];$rows=[];
-        foreach($items as $i)$rows[]=[(string)($i['item_type']??''),(string)($i['reference_no']??''),(string)($i['determination_no']??''),(string)($i['determination_date']??''),(string)($i['bl_no']??''),(string)($i['bl_date']??''),(string)($i['manifest_no']??''),(string)($i['manifest_date']??''),(string)($i['manifest_position']??''),(string)($i['container_no']??''),(string)($i['container_size']??''),(string)($i['load_type']??''),(string)($i['description']??''),(string)($i['item_kind']??''),(string)($i['goods_condition']??''),(float)($i['quantity']??0),(string)($i['unit']??''),(int)($i['goods_value']??0),(string)($i['origin_warehouse']??''),(string)($i['facility_name']??''),(string)($i['location_status']??''),(string)($i['status_label']??''),!empty($i['is_active'])?'Aktif':'Selesai'];
+        $headers=['Jenis','Nomor Referensi','Nomor Penetapan/Dokumen','Tanggal Penetapan','Nomor BL','Tanggal BL','Nomor Manifest','Tanggal Manifest','Pos Manifest','Nomor Kontainer','Ukuran','Muatan','Uraian Barang','Jenis Barang','Kondisi','Jumlah','Satuan','Nilai Barang','TPS Asal','TPP','Blok TPP','Status Lokasi','Status Barang','Status Inventory'];$rows=[];
+        foreach($items as $i)$rows[]=[(string)($i['item_type']??''),(string)($i['reference_no']??''),(string)($i['determination_no']??''),(string)($i['determination_date']??''),(string)($i['bl_no']??''),(string)($i['bl_date']??''),(string)($i['manifest_no']??''),(string)($i['manifest_date']??''),(string)($i['manifest_position']??''),(string)($i['container_no']??''),(string)($i['container_size']??''),(string)($i['load_type']??''),(string)($i['description']??''),(string)($i['item_kind']??''),(string)($i['goods_condition']??''),(float)($i['quantity']??0),(string)($i['unit']??''),(int)($i['goods_value']??0),(string)($i['origin_warehouse']??''),(string)($i['facility_name']??''),$this->blockLocation($i),(string)($i['location_status']??''),(string)($i['status_label']??''),!empty($i['is_active'])?'Aktif':'Selesai'];
         return $this->tableExport($format,$headers,$rows,'livira-laporan','Laporan LIVIRA');
     }
     private function exportPerformance(Request $r):Response
@@ -798,7 +798,7 @@ final class App
         $items=$this->store->listInventory($filter);$titleDescription=$this->reportPresetCopy($preset);$report=$this->reportOptions($r,$preset,$titleDescription[0],$titleDescription[1],['Scope'=>$scope,'Location'=>$location,'ItemKind'=>$filter['item_kind'],'GoodsCondition'=>$filter['goods_condition'],'Category'=>$filter['category'],'AllocationPurpose'=>$filter['allocation_purpose'],'MinValue'=>$minValue?:'','MaxValue'=>$maxValue?:'','MinAge'=>$minAge?:'','DateFrom'=>$filter['date_from'],'DateTo'=>$filter['date_to']]);return[$filter,$items,$report];
     }
     private function reportOptions(Request $r,string $preset,string $title,string $description,array $extra=[]):array{$query=$r->query;unset($query['page'],$query['page_size']);$query['preset']=$preset;if($preset==='')unset($query['preset']);$qs=http_build_query(array_filter($query,fn($v)=>$v!==''&&$v!==null));$suffix=$qs!==''?'?'.$qs:'';return array_merge(['Preset'=>$preset,'Title'=>$title,'Description'=>$description,'ExportURL'=>'/pelaporan.csv'.$suffix,'CSVExportURL'=>'/pelaporan.csv'.$suffix,'ExcelExportURL'=>'/pelaporan.xlsx'.$suffix],$extra);}
-    private function reportPresetCopy(string $preset):array{return match($preset){'active_tpp'=>['Barang aktif per TPP','Daftar barang aktif yang saat ini tersebar dan berada di TPP.'],'overdue_60'=>['BTD/BDN 60 hari belum ditindaklanjuti','Barang BTD atau BDN yang telah berumur sekurangnya 60 hari dan masih pada status penetapan awal.'],'auction_ready'=>['Potensi barang siap lelang','Barang bernilai yang sudah diteliti PFPD atau berstatus BMMN, belum masuk proses, diurutkan dari nilai tertinggi.'],'at_tps'=>['Barang aktif masih di TPS','Daftar barang aktif yang belum dipindahkan dari TPS asal ke TPP.'],'bmmn_allocation'=>['BMMN menunggu peruntukan','Daftar BMMN aktif yang belum masuk proses lelang, musnah, atau hibah/PSP.'],'completed'=>['Riwayat barang selesai','Daftar barang yang telah keluar dari inventory aktif.'],'btd'=>['Laporan BTD','Rekap lengkap per dokumen BTD yang memuat BL, manifest, TPS asal, TPP, kontainer/LCL, rincian barang, nilai, dan status.'],default=>['Laporan kustom','Gabungkan rentang tanggal, status inventory, lokasi, nilai, umur, jenis, dan TPP sesuai kebutuhan.']};}
+    private function reportPresetCopy(string $preset):array{return match($preset){'active_tpp'=>['Barang aktif per TPP','Daftar barang aktif yang saat ini berada di TPP, lengkap dengan nama TPP dan blok penyimpanan.'],'overdue_60'=>['BTD/BDN 60 hari belum ditindaklanjuti','Barang BTD atau BDN yang telah berumur sekurangnya 60 hari dan masih pada status penetapan awal.'],'auction_ready'=>['Potensi barang siap lelang','Barang bernilai yang sudah diteliti PFPD atau berstatus BMMN, belum masuk proses, diurutkan dari nilai tertinggi.'],'at_tps'=>['Barang aktif masih di TPS','Daftar barang aktif yang belum dipindahkan dari TPS asal ke TPP.'],'bmmn_allocation'=>['BMMN menunggu peruntukan','Daftar BMMN aktif yang belum masuk proses lelang, musnah, atau hibah/PSP.'],'completed'=>['Riwayat barang selesai','Daftar barang yang telah keluar dari inventory aktif.'],'btd'=>['Laporan BTD','Rekap lengkap per dokumen BTD yang memuat BL, manifest, TPS asal, TPP, kontainer/LCL, rincian barang, nilai, dan status.'],default=>['Laporan kustom','Gabungkan rentang tanggal, status inventory, lokasi, nilai, umur, jenis, dan TPP sesuai kebutuhan.']};}
     private function btdRows(array $items):array
     {
         $docs=[];$unique=static function(array $values,string $value):array{$value=trim($value);if($value!==''&&!in_array($value,$values,true))$values[]=$value;return$values;};
@@ -851,6 +851,15 @@ final class App
 
     private function pagination(Request $r,int $page,int $size,int $total):array{$pages=max(1,(int)ceil($total/$size));$page=min($page,$pages);$build=function(array $changes)use($r){$q=array_merge($r->query,$changes);foreach($q as $k=>$v)if($v===''||$v===null)unset($q[$k]);return$r->path.($q?'?'.http_build_query($q):'');};$sizes=[];foreach([10,20,50,100] as $n)$sizes[]=['Value'=>$n,'Selected'=>$n===$size,'URL'=>$build(['page_size'=>$n,'page'=>1])];return['Page'=>$page,'PageSize'=>$size,'TotalItems'=>$total,'TotalPages'=>$pages,'StartItem'=>$total?($page-1)*$size+1:0,'EndItem'=>min($total,$page*$size),'HasPrevious'=>$page>1,'HasNext'=>$page<$pages,'PreviousURL'=>$build(['page'=>$page-1]),'NextURL'=>$build(['page'=>$page+1]),'Sizes'=>$sizes];}
     private function pageSize(mixed $v):int{$n=(int)$v;return in_array($n,[10,20,50,100],true)?$n:20;}
+    private function blockLocation(array $item):string
+    {
+        if(empty($item['at_tpp']))return '';
+        $location=trim((string)($item['location']??''));
+        $facility=trim((string)($item['facility_name']??''));
+        $status=trim((string)($item['location_status']??''));
+        if($location===''||($facility!==''&&strcasecmp($location,$facility)===0)||($status!==''&&strcasecmp($location,$status)===0))return '';
+        return $location;
+    }
     private function facilityName(array $facilities,string $id):string{foreach($facilities as $f)if(($f['id']??'')===$id)return(string)$f['name'];return'Gabungan seluruh TPP';}
     private function values(mixed $v):array{if(is_array($v))return array_values(array_unique(array_filter(array_map(fn($x)=>trim((string)$x),$v))));$s=trim((string)$v);if($s==='')return[];return array_values(array_unique(array_filter(array_map('trim',preg_split('/[,\r\n]+/',$s)?:[]))));}
     private function jsonArray(mixed $v):array{$a=json_decode((string)$v,true);return is_array($a)?(array_is_list($a)?$a:[$a]):[];}
@@ -885,7 +894,7 @@ final class App
             'nomor btd'=>'determination_no','tanggal btd'=>'determination_date',
             'nomor penetapan'=>'determination_no','no penetapan'=>'determination_no','tanggal penetapan'=>'determination_date',
             'nomor dokumen'=>'determination_no','nomor dokumen dasar pemasukan'=>'determination_no','tanggal dokumen'=>'determination_date',
-            'nomor bl'=>'bl_no','tanggal bl'=>'bl_date','nomor manifest'=>'manifest_no','tanggal manifest'=>'manifest_date','pos manifest'=>'manifest_position',
+            'nomor bl'=>'bl_no','nomor bl opsional'=>'bl_no','tanggal bl'=>'bl_date','tanggal bl opsional'=>'bl_date','nomor manifest'=>'manifest_no','tanggal manifest'=>'manifest_date','pos manifest'=>'manifest_position',
             'kategori bdn'=>'category','kategori barang'=>'entrusted_category','kategori titipan'=>'entrusted_category','kantor unit penitip'=>'source_office','kantor penitip'=>'source_office',
             'jenis muatan'=>'load_type','tps asal'=>'origin_warehouse','nomor kontainer fcl'=>'container_no','nomor kontainer'=>'container_no',
             'ukuran kontainer fcl'=>'container_size','ukuran kontainer'=>'container_size','perkiraan volume m3 lcl'=>'estimated_volume_m3','volume m3'=>'estimated_volume_m3',
@@ -906,7 +915,9 @@ final class App
         if($mapped['determination_date']===null)$errors[]='tanggal dokumen wajib diisi dengan format dd/mm/yyyy';
 
         $mapped['bl_no']=$get('bl_no');
-        $mapped['bl_date']=$this->importDate($get('bl_date'));
+        $blDateRaw=$get('bl_date');
+        $mapped['bl_date']=$blDateRaw===''?null:$this->importDate($blDateRaw);
+        if($blDateRaw!==''&&$mapped['bl_date']===null)$errors[]='tanggal BL tidak valid; gunakan format dd/mm/yyyy';
         if($type==='BTD'){
             if($mapped['bl_no']==='')$errors[]='nomor BL wajib diisi untuk BTD';
             if($mapped['bl_date']===null)$errors[]='tanggal BL wajib diisi dengan format dd/mm/yyyy untuk BTD';
@@ -1020,11 +1031,11 @@ final class App
                 $signature=implode('|',[
                     $input['type']??'',$input['determination_no']??'',$input['determination_date']??'',
                     $input['bl_no']??'',$input['bl_date']??'',$input['manifest_no']??'',$input['origin_warehouse']??'',
-                    $input['facility_id']??'',$input['container_size']??'',!empty($input['at_tpp'])?'1':'0',
+                    $input['facility_id']??'',$input['location']??'',$input['container_size']??'',!empty($input['at_tpp'])?'1':'0',
                 ]);
                 $unit=(string)($input['type']??'').'|'.(string)($input['determination_no']??'').'|'.$key;
                 if(isset($fcl[$key])){
-                    if($fcl[$key]['signature']!==$signature)throw new ApiException('Baris '.$row.': nomor kontainer sama dengan baris '.$fcl[$key]['row'].' tetapi dokumen, ukuran, manifest, BL, TPS/TPP, atau status lokasinya tidak konsisten. Tidak ada data yang disimpan.',422);
+                    if($fcl[$key]['signature']!==$signature)throw new ApiException('Baris '.$row.': nomor kontainer sama dengan baris '.$fcl[$key]['row'].' tetapi dokumen, ukuran, manifest, BL, TPS/TPP, blok TPP, atau status lokasinya tidak konsisten. Tidak ada data yang disimpan.',422);
                     $input['physical_unit_id']=$fcl[$key]['unit'];$input['occupancy_primary']=false;
                 }else{
                     $fcl[$key]=['row'=>$row,'signature'=>$signature,'unit'=>$unit];
@@ -1034,10 +1045,10 @@ final class App
                 $key=(string)($input['type']??'').'|'.(string)($input['determination_no']??'').'|'.(string)($input['determination_date']??'');
                 $signature=implode('|',[
                     $input['bl_no']??'',$input['bl_date']??'',$input['manifest_no']??'',$input['origin_warehouse']??'',
-                    $input['facility_id']??'',sprintf('%.6F',(float)($input['estimated_volume_m3']??0)),!empty($input['at_tpp'])?'1':'0',
+                    $input['facility_id']??'',$input['location']??'',sprintf('%.6F',(float)($input['estimated_volume_m3']??0)),!empty($input['at_tpp'])?'1':'0',
                 ]);
                 if(isset($lcl[$key])){
-                    if($lcl[$key]['signature']!==$signature)throw new ApiException('Baris '.$row.': data LCL satu dokumen tidak konsisten dengan baris '.$lcl[$key]['row'].' pada volume, manifest, BL, TPS/TPP, atau status lokasi. Tidak ada data yang disimpan.',422);
+                    if($lcl[$key]['signature']!==$signature)throw new ApiException('Baris '.$row.': data LCL satu dokumen tidak konsisten dengan baris '.$lcl[$key]['row'].' pada volume, manifest, BL, TPS/TPP, blok TPP, atau status lokasi. Tidak ada data yang disimpan.',422);
                     $input['physical_unit_id']=$key;$input['occupancy_primary']=false;
                 }else{
                     $lcl[$key]=['row'=>$row,'signature'=>$signature];

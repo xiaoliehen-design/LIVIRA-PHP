@@ -139,7 +139,7 @@
             <section class="correction-group"><header><span>03</span><div><h3>Lokasi dan unit fisik</h3><p>Koreksi TPS/TPP, blok, kontainer, ukuran, dan volume tanpa mengubah status alur.</p></div></header><div class="form-grid cols-3">
               <label>TPS/gudang asal<input data-correction-field="origin_warehouse"></label>
               <label>TPP<select data-correction-field="facility_id"><option value="">Belum ditentukan</option><?php $__range15 = tpl_iter(tpl_get($ctx, 'Facilities')); if (count($__range15) > 0): $__parent15 = $ctx; foreach ($__range15 as $__key15 => $__item15): $ctx = $__item15; ?><option value="<?= tpl_escape(tpl_get($ctx, 'ID')) ?>"><?= tpl_escape(tpl_get($ctx, 'Name')) ?></option><?php $ctx = $__parent15; endforeach; endif; ?></select></label>
-              <label>Blok/lokasi<input data-correction-field="location"></label>
+              <label>Blok TPP <span class="optional-mark">Opsional</span><input data-correction-field="location" placeholder="Contoh: Blok B-08 / Gudang 2"></label>
               <label>Status lokasi<input data-correction-field="location_status"></label>
               <label>Jenis muatan <em>*</em><select data-correction-field="load_type" data-required="true"><option value="FCL">FCL</option><option value="LCL">LCL</option></select></label>
               <label>Nomor kontainer<input data-correction-field="container_no"></label>
